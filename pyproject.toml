@@ -1,0 +1,175 @@
+[build-system]
+requires = ["setuptools>=77"]  # >=77 for PEP 639 license/license-files
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardstream"
+version = "0.2.0"
+description = "Real-time trading-card identification: a smart local client backed by Ximilar collectibles endpoints"
+readme = "README.md"
+requires-python = ">=3.11"
+# PEP 639: an SPDX expression, NOT a "License ::" classifier. The two are
+# mutually exclusive under Metadata 2.4 and PyPI rejects an upload carrying
+# both, so the classifier list below deliberately has no licence entry.
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "Ximilar", email = "tech@ximilar.com" }]
+keywords = [
+    "trading-cards", "tcg", "pokemon", "card-identification",
+    "computer-vision", "instance-segmentation", "onnx", "rf-detr",
+    "real-time", "video-stream",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=1.23",
+    "opencv-python-headless>=4.9",  # >=4.9 for cv2.TrackerVit (optional visual tracking)
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# The smart client: frame sources + the local browser UI (page, camera WS,
+# settings endpoints). websockets is the ws:// --source puller.
+client = [
+    "websockets>=12",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2",          # web_settings.SettingsPatch imports it directly
+]
+# PyTorch detector/embedder backends (transformers RT-DETRv2, torchvision MobileNetV2).
+torch = [
+    "torch>=2.1",
+    "torchvision>=0.16",
+    "transformers>=4.49",
+]
+# ONNX Runtime backends (.onnx detection + embedding models).
+onnx = [
+    "onnxruntime>=1.17",
+]
+# LiteRT/TFLite embedder backend (.tflite embedding models).
+tflite = [
+    "ai-edge-litert>=1.0",
+]
+
+# PEP 735. A GROUP, not an extra: extras are published in the wheel metadata,
+# so `pip install cardstream[dev]` would be a thing users could do and get
+# nothing useful from. Groups stay local to the checkout.
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx2>=2",            # fastapi.testclient (TestClient + WebSocket);
+                            # starlette >=1.3 deprecates plain httpx for it
+    "build>=1.0",           # scripts/build-release.sh (wheel + sdist)
+    "ruff>=0.14",
+    "mypy>=1.13",
+]
+
+[project.scripts]
+cardstream-client = "cardstream.client.stream_client:main"
+cardstream-web = "cardstream.client.web_client:main"
+
+[project.urls]
+Homepage = "https://cardstream.ai"
+Documentation = "https://cardstream.ai/docs"
+Source = "https://github.com/Ximilar-com/cardstream"
+Issues = "https://github.com/Ximilar-com/cardstream/issues"
+Changelog = "https://github.com/Ximilar-com/cardstream/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cardstream = ["webui/**/*", "py.typed"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# An EXPLICIT select, not extend-select: ruff's default set is ~400 rules and
+# grows between releases, so extending it would let an upgrade change what CI
+# rejects. This list is the gate; widening it is a deliberate commit.
+select = [
+    "E4", "E7", "E9",  # pycodestyle errors (the subset ruff defaults to)
+    "F",               # pyflakes
+    "I",               # import sorting (replaces isort)
+    "B",               # bugbear
+    "C4",              # comprehensions
+    "UP",              # pyupgrade -- keeps the already-3.11+ idiom honest
+    "SIM",             # simplify
+    "RUF",
+]
+ignore = [
+    "B008",    # FastAPI's Depends() in a default is the framework's own idiom
+    "SIM108",  # a ternary is not always clearer than the if/else it replaces
+    # UP042 wants StrEnum for CardState/ConfidenceTier. Those are
+    # PROTOCOL-shaped -- they serialize over the WS and the page compares the
+    # strings -- and StrEnum changes what str() returns. Not a formatting
+    # change; it would need its own commit and its own test.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests reach into privates on purpose and rebind names in fixtures.
+"tests/**" = ["B011", "RUF012"]
+
+[tool.mypy]
+# No python_version pin: numpy's own stubs use 3.12 `type` statements, so
+# pinning to our 3.11 floor makes mypy fail inside numpy before it reaches
+# our code. Ruff's target-version = "py311" is what guards the floor; the CI
+# matrix runs the real interpreters.
+# Scoped to core/ deliberately. core is the dependency-light half every
+# driver imports, so it is where a type error costs most and where the
+# annotations are already densest. client/ is checked by the test suite and
+# gets folded in module by module -- not in one unreviewable pass.
+files = ["src/cardstream/core"]
+# core/ is the dependency-light half (numpy + cv2 + requests) and the one
+# every driver imports, so it carries the strict setting. client/ is looser
+# for now -- tighten it module by module rather than in one unreviewable pass.
+# Off on purpose: the ML overrides below are only "used" when the [torch]
+# extra is installed, and CI lints against [client,onnx] alone.
+warn_unused_configs = false
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "cardstream.core.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+# ML + vision backends ship no stubs; the lazy imports live inside classes.
+module = ["cv2.*", "onnxruntime.*", "torch.*", "torchvision.*",
+          "transformers.*", "PIL.*", "ai_edge_litert.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = ["-ra", "--import-mode=importlib", "--durations=10"]
+# A blanket ignore hides exactly the numpy/onnxruntime deprecations that
+# predict the next breakage. Error by default; add one NARROW ignore per
+# real offender, with a note saying whose warning it is.
+filterwarnings = ["error"]

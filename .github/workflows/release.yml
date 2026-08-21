@@ -1,0 +1,118 @@
+# Tag-triggered release: PyPI via Trusted Publishing (OIDC), plus the GitHub
+# release assets scripts/install.sh expects (wheel, sdist, SHA256SUMS).
+#
+# One-time setup on PyPI: Manage -> Publishing -> add a GitHub publisher for
+# Ximilar-com/cardstream, workflow `release.yml`, environment `pypi`. Use the
+# "pending publisher" form to reserve the name before the first release.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+# One release at a time; never cancel one midway through publishing.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build wheel + sdist
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          # A release must not restore a cache that a pull request could have
+          # written. Correctness of the artifact beats a few seconds here.
+          enable-cache: false
+
+      # The invariant scripts/build-release.sh enforces locally: the tag and
+      # pyproject's version are one fact. CLAUDE.md's rule is that the version
+      # is authored once, and this is what keeps that true through CI.
+      - name: tag matches pyproject version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject version $v"
+            exit 1
+          fi
+
+      - run: uv build
+      - run: uvx twine check dist/*
+
+      # install.sh ships as a release asset too (it is what cardstream.ai
+      # serves), so it is copied in BEFORE the sums are taken.
+      - name: assemble release assets
+        run: |
+          cp scripts/install.sh dist/install.sh
+          cd dist
+          sha256sum ./* > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+
+  # Split from build on purpose, and with NO checkout: this job holds the
+  # publishing identity, so it should see as little as possible.
+  pypi:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/cardstream
+    permissions:
+      id-token: write # mandatory for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: keep only the package files — PyPI rejects anything else
+        run: rm -f dist/SHA256SUMS dist/install.sh
+      # PEP 740 attestations are generated automatically under Trusted
+      # Publishing — nothing to configure.
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  github-release:
+    name: publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write      # create the release and upload its assets
+      id-token: write      # mint the Sigstore identity for the attestation
+      attestations: write  # record it against the repository
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+
+      # Trusted Publishing attests the artifacts on PyPI, not on GitHub. The
+      # release assets install.sh downloads need their own provenance.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: "dist/*.whl,dist/*.tar.gz"
+
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "cardstream $GITHUB_REF_NAME" \
+            --generate-notes

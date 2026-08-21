@@ -1,0 +1,14 @@
+# The sdist is what `pip install cardstream` builds from — it needs the
+# package, its metadata and its licence, and nothing else. Without this,
+# setuptools' defaults sweep in a stray top-level test file but not the rest
+# of the suite, which is the worst of both: run the tests from a checkout.
+include LICENSE NOTICE README.md
+recursive-include src/cardstream/webui *
+prune tests
+prune docs
+prune model
+prune scripts
+prune docker
+prune .github
+exclude Makefile Dockerfile uv.lock .pre-commit-config.yaml .editorconfig
+exclude CLAUDE.md AGENTS.md CONTRIBUTING.md SECURITY.md CHANGELOG.md

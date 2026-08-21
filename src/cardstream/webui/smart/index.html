@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Card Client — Local Identification</title>
+  <link rel="icon" type="image/svg+xml" href="../shared/logo.svg" />
+  <link rel="stylesheet" href="../shared/style.css" />
+  <link rel="stylesheet" href="smart.css" />
+</head>
+<body>
+  <header>
+    <h1 class="brand">
+      <img class="brand-logo" src="../shared/logo.svg" alt="" width="26" height="26" />
+      <span class="brand-name">card<b>stream</b></span>
+      <span class="brand-sub">web client</span>
+    </h1>
+    <div class="status">
+      <span id="conn" class="badge badge-off">disconnected</span>
+      <span id="state" class="badge">—</span>
+      <span id="fps" class="badge">0 fps</span>
+      <span id="cam-res" class="badge" title="resolution the camera actually delivers (getUserMedia asks for an ideal 1280×720)">cam —</span>
+      <span id="send-res" class="badge" title="resolution the local process analyses at (--width); identification crops are cut from the full-resolution frame">analysed —</span>
+      <span id="calls" class="badge" title="Ximilar identification calls this session">0 calls</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <img id="remote" hidden alt="" />
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <aside id="panel" class="panel empty">
+      <div id="game-row" class="game-row" hidden>
+        <span id="game-quick" class="game-quick">
+          <label for="game">Game</label>
+          <select id="game"></select>
+        </span>
+        <button id="settings-open" class="icon-btn" title="Settings" aria-label="Settings">⚙</button>
+      </div>
+      <div class="placeholder">Point a card at the camera…</div>
+      <div class="card-info" hidden>
+        <div class="tier-row">
+          <span id="tier" class="tier">—</span>
+          <span id="distance" class="distance"></span>
+        </div>
+        <h2 id="card-name">—</h2>
+        <dl>
+          <dt>Set</dt><dd id="card-set">—</dd>
+          <dt>Number</dt><dd id="card-number">—</dd>
+          <dt>Series</dt><dd id="card-series">—</dd>
+          <dt>Year</dt><dd id="card-year">—</dd>
+        </dl>
+        <div class="links" id="card-links"></div>
+        <details id="alt-wrap" hidden>
+          <summary>Alternatives</summary>
+          <ul id="alternatives"></ul>
+        </details>
+      </div>
+      <div id="history-wrap" hidden>
+        <div class="history-head">History</div>
+        <ol id="history"></ol>
+      </div>
+    </aside>
+  </main>
+
+  <section id="log-wrap" hidden>
+    <div class="log-head">Debug log <button id="log-clear">clear</button></div>
+    <pre id="log"></pre>
+  </section>
+
+  <footer>
+    <button id="toggle">Start</button>
+  </footer>
+
+  <!-- Settings dialog. Everything in settings-fields.js round-trips through
+       POST /settings (only the fields the user actually changed); the send
+       rate and the detection box below are page-local and apply on the spot. -->
+  <dialog id="settings-dialog">
+    <div class="dialog-head">
+      <h2>Settings</h2>
+      <button id="settings-close" class="icon-btn" aria-label="Close">✕</button>
+    </div>
+
+    <!-- Generated from settings-fields.js — one descriptor per knob, so a
+         new setting is one entry there plus one pydantic field, not eight
+         hand-written blocks that have to stay in step with three other lists. -->
+    <div id="settings-fields"></div>
+
+    <div class="setting" id="rate-setting">
+      <label for="rate">Send rate <span id="rate-val" class="value">10</span>/s</label>
+      <input id="rate" type="range" min="2" max="15" value="10" />
+      <p class="hint">Frames per second pushed to the local analyzer.</p>
+    </div>
+
+    <div class="setting switch">
+      <label for="set-show-box">Show detection box</label>
+      <input id="set-show-box" type="checkbox" />
+      <p class="hint">Draws the detector's bounding box over the video. Applied straight away — it never leaves the browser.</p>
+    </div>
+
+    <p id="settings-error" class="settings-error" hidden></p>
+
+    <div class="dialog-actions">
+      <button id="settings-cancel" class="btn">Cancel</button>
+      <button id="settings-save" class="btn primary">Save</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+cardstream
+Copyright 2026 Ximilar s.r.o.
+
+This product includes software developed at Ximilar (https://ximilar.com).
+
+Licensed under the Apache License, Version 2.0. See LICENSE for the full
+terms.
+
+--------------------------------------------------------------------------
+Third-party components
+--------------------------------------------------------------------------
+
+Every model architecture and runtime weight this project loads is
+Apache-2.0. A licence-encumbered backend is deliberately out of scope --
+see model/README.md.
+
+RF-DETR
+  Roboflow. Apache License 2.0.
+  https://github.com/roboflow/rf-detr
+  The detection and instance-segmentation architectures behind
+  --detector-model and --segmentor-model, finetuned by Ximilar. The
+  finetuned WEIGHTS are a separate grant from the architecture -- see the
+  model zoo for the licence attached to each file.
+
+RT-DETRv2
+  Baidu / lyuwenyu, and the Hugging Face Transformers implementation.
+  Apache License 2.0.
+  https://github.com/lyuwenyu/RT-DETR
+  https://github.com/huggingface/transformers
+  The alternative detection backend (--detector rtdetr).
+
+OpenCV and the OpenCV Model Zoo (vitTracker)
+  OpenCV team. Apache License 2.0.
+  https://github.com/opencv/opencv
+  https://github.com/opencv/opencv_zoo
+  Image primitives throughout core/, and the optional per-frame visual
+  tracker (--tracker-model).
+
+MobileNetV2
+  Google. Apache License 2.0.
+  The embedding backbone behind the identity gate (--embed-model),
+  finetuned by Ximilar.
+
+Identification is performed by the Ximilar collectibles API
+(https://api.ximilar.com), which is a paid hosted service and is not
+covered by this licence.

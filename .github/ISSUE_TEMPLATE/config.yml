@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ximilar API / identification quality
+    url: https://www.ximilar.com/contact/
+    about: >-
+      Wrong or missing card MATCHES come from the collectibles endpoint, not
+      from this client. Ximilar support is the faster route for those.
+  - name: Questions and ideas
+    url: https://github.com/Ximilar-com/cardstream/discussions
+    about: Usage questions, tuning help, and feature ideas.

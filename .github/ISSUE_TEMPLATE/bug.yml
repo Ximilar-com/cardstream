@@ -1,0 +1,76 @@
+name: Bug report
+description: Something in the client behaves wrongly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Note: a card that is *identified wrongly* is usually an endpoint
+        result, not a client bug — see the links on the previous screen.
+        A card that is never detected, a call that fires too often, or a
+        crash is the right thing to report here.
+
+  - type: textarea
+    id: banner
+    attributes:
+      label: Startup banner
+      description: >-
+        The block both commands print before any model loads. It lists every
+        knob and marks the ones that came from a flag, so it answers most of
+        the questions this form would otherwise have to ask. The API key is
+        confirmed, never printed — the banner is safe to paste.
+      render: text
+      placeholder: |
+        $ cardstream-web --debug
+        ... paste the whole banner ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. cardstream-web --source ...
+        2. hold a card ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: --debug output around the problem
+      description: >-
+        Run with --debug and paste the lines either side of the moment it
+        went wrong. The detect/gate/identify lines are the useful ones.
+      render: text
+
+  - type: input
+    id: platform
+    attributes:
+      label: OS, Python version, and how you installed
+      placeholder: "macOS 15.5 arm64, Python 3.12, install.sh"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: source
+    attributes:
+      label: Frame source
+      options:
+        - browser webcam (camera mode)
+        - webcam index
+        - video or image file
+        - RTSP / RTMP / SRT pull
+        - --listen (pushed RTMP/SRT, e.g. OBS)
+        - "ws:// JPEG feed"
+    validations:
+      required: true

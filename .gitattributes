@@ -1,0 +1,24 @@
+# Line endings: one convention in the repo, whatever the checkout OS.
+* text=auto eol=lf
+*.sh   text eol=lf
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.onnx binary
+*.mp4  binary
+
+# Linguist. Without these the webui/ tree of JS+CSS outweighs src/ and GitHub
+# labels a Python computer-vision project "JavaScript" -- which is the first
+# thing a visitor sees on the repo page.
+src/cardstream/webui/**            linguist-language=JavaScript
+src/cardstream/webui/shared/logo.svg  -diff linguist-vendored
+docs/**                            linguist-documentation
+tests/**                           linguist-documentation
+
+# Keep the sdist to what `pip install` needs.
+/tests/         export-ignore
+/docs/          export-ignore
+/.github/       export-ignore
+/testvideo.mp4  export-ignore
+/images/        export-ignore
+/frame/         export-ignore

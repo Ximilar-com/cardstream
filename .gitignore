@@ -1,0 +1,29 @@
+# Python
+.venv/
+**/__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.mp4
+# Secrets / local config
+.env
+
+# Model weights / training artifacts. ONE root: model/{detection,segmentation,
+# similarity,tracking}. model/README.md is the only tracked file under it —
+# weights don't belong in git history.
+model/*
+!model/README.md
+
+# OS
+.DS_Store
+
+# `make dev` artifacts (--store-images). Scoped to these two folders on
+# purpose: a blanket *.jpg would also swallow docs/media screenshots, which
+# are the one kind of image that DOES belong in git.
+images/
+frame/
+
+# Release artifacts (scripts/build-release.sh)
+dist/
