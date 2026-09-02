@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the release artifacts: wheel + sdist + SHA256SUMS + install.sh.
+# Build the release artifacts: wheel + sdist + SHA256SUMS.
 #
 #   scripts/build-release.sh [vX.Y.Z] [--publish]
 #
@@ -53,18 +53,9 @@ BUILT="$(basename dist/cardstream-*.whl)"
   exit 1
 }
 
-cp scripts/install.sh dist/install.sh
-
-# The marketing site serves the same installer from its own repo. Copy it here
-# rather than by hand: the two drifted the moment one was edited alone, and a
-# stale curl|sh is the worst copy to have wrong.
-WEB_INSTALL="../web/public/install.sh"
-if [ -f "$WEB_INSTALL" ]; then
-  cp scripts/install.sh "$WEB_INSTALL"
-  echo "synced $WEB_INSTALL (commit it in the web repo — separate remote)"
-else
-  echo "note: $WEB_INSTALL not found; skipping the site copy" >&2
-fi
+# install.sh is deliberately NOT copied anywhere: the one copy lives at
+# scripts/install.sh and users curl it straight from the repo (raw main),
+# so a fix lands with a push instead of a re-release and a site deploy.
 
 (
   cd dist

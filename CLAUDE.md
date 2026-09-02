@@ -427,7 +427,7 @@ cardstream-web --split-results                            # one history row per 
 cardstream-web --version                        # print the version and exit (also cardstream-client)
 
 # Distribution (scripts/ + Dockerfile; artifacts go to GitHub releases)
-scripts/build-release.sh                # wheel + sdist + SHA256SUMS + install.sh into dist/ (--publish = gh release)
+scripts/build-release.sh                # wheel + sdist + SHA256SUMS into dist/ (--publish = gh release)
 scripts/build-from-source.sh            # venv + editable install + smoke checks (--models fetches weights)
 sh scripts/install.sh                   # the curl|sh installer (venv in ~/.cardstream, shims in ~/.local/bin)
 docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:8001:8001 -v cardstream-models:/models cardstream
@@ -460,8 +460,9 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
 - **The version is authored once, in `pyproject.toml`.** Everything else reads
   `cardstream.__version__` (importlib.metadata); both CLIs surface it via the
   shared `--version` flag (`add_version_arg` in `common.py`) and their startup
-  banner. `../web/public/install.sh` is a COPY of `scripts/install.sh` that
-  `scripts/build-release.sh` writes — edit the script here, never the mirror.
+  banner. `scripts/install.sh` is the ONLY copy of the installer — the site
+  and the docs point at its raw-main URL, and it is deliberately not a
+  release asset, so a fix lands with a push.
 - **Config is flag-driven, not env-driven.** argparse in `common.py`, with
   every default read from `AnalyzerConfig()` so the dataclass is the single
   source of tuning defaults. `XIMILAR_API_KEY` is the ONE environment variable

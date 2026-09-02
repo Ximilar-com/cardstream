@@ -1,10 +1,11 @@
 #!/bin/sh
 # cardstream installer — venv install from the latest GitHub release.
 #
-#   curl -fsSL https://cardstream.ai/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Ximilar-com/cardstream/main/scripts/install.sh | sh
 #
-# scripts/build-release.sh copies this into ../web/public/install.sh, which is
-# what cardstream.ai/install.sh serves — edit it HERE, never there.
+# This is the ONLY copy of the installer — the site and the docs point at the
+# raw-main URL above, and it is deliberately not a release asset, so a fix
+# lands with a push instead of a re-release.
 #
 # Knobs (env vars):
 #   CARDSTREAM_HOME        install root, holds venv/ + models/   (default ~/.cardstream)

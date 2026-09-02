@@ -107,7 +107,7 @@ Full details, download table and each export's I/O contract:
 `~/.local/bin`, model weights included):
 
 ```bash
-curl -fsSL https://cardstream.ai/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Ximilar-com/cardstream/main/scripts/install.sh | sh
 cardstream-web --version
 ```
 

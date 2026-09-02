@@ -1,5 +1,6 @@
 # Tag-triggered release: PyPI via Trusted Publishing (OIDC), plus the GitHub
-# release assets scripts/install.sh expects (wheel, sdist, SHA256SUMS).
+# release assets scripts/install.sh expects (wheel, sdist, SHA256SUMS);
+# install.sh itself is curl'd from raw main, never a release asset.
 #
 # One-time setup on PyPI: Manage -> Publishing -> add a GitHub publisher for
 # Ximilar-com/cardstream, workflow `release.yml`, environment `pypi`. Use the
@@ -50,11 +51,11 @@ jobs:
       - run: uv build
       - run: uvx twine check dist/*
 
-      # install.sh ships as a release asset too (it is what cardstream.ai
-      # serves), so it is copied in BEFORE the sums are taken.
+      # install.sh is NOT a release asset: the one copy lives at
+      # scripts/install.sh and users curl it from raw main, so a frozen
+      # per-release snapshot cannot go stale.
       - name: assemble release assets
         run: |
-          cp scripts/install.sh dist/install.sh
           cd dist
           # Bare names, not ./*: install.sh looks the wheel up by filename.
           sha256sum -- * > SHA256SUMS.tmp
@@ -83,7 +84,7 @@ jobs:
           name: dist
           path: dist/
       - name: keep only the package files — PyPI rejects anything else
-        run: rm -f dist/SHA256SUMS dist/install.sh
+        run: rm -f dist/SHA256SUMS
       # PEP 740 attestations are generated automatically under Trusted
       # Publishing — nothing to configure.
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
