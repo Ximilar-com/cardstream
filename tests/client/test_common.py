@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from _helpers import FakeDetector
+from _helpers import FakeDetector, FakeEmbedder
 from cardstream.client import common
 from cardstream.client.analyzer import AnalyzerConfig
 from cardstream.client.common import (
@@ -34,7 +34,7 @@ def _parse(argv):
 
 @pytest.fixture(autouse=True)
 def offline_locators(monkeypatch):
-    """Neither factory may load a real model — the suite is offline.
+    """No factory may load a real model — the suite is offline.
 
     Returns the recorded calls so a test can assert WHICH factory got the
     model path without ever touching onnxruntime.
@@ -52,6 +52,7 @@ def offline_locators(monkeypatch):
 
     monkeypatch.setattr(common, "make_detector", record("detector"))
     monkeypatch.setattr(common, "make_segmentor", record("segmentor"))
+    monkeypatch.setattr(common, "make_embedder", lambda model=None: FakeEmbedder())
     # The shipped defaults point into the gitignored model/ tree, which a test
     # checkout does not have — the paths are what is under test, not the files.
     monkeypatch.setattr(common, "_require_model", lambda path, flag: None)
