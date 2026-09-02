@@ -11,9 +11,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # One tarball per model, versioned independently — a retrain republishes one
-# archive; bump the one that changed here.
+# archive; bump the one that changed here. The opt-in tracker comes straight
+# from the OpenCV zoo — its URL floats on their main branch, so the pinned
+# checksum holds the version still.
 MODELS_BASE_URL="${CARDSTREAM_MODELS_BASE_URL:-https://cardstream.ai/models}"
-MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz cardstream-tracking-v1.tar.gz}"
+MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz}"
+TRACKER_URL="${CARDSTREAM_TRACKER_URL:-https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx}"
+TRACKER_SHA256="2990f0b7cd44d92afa48cd97db6de7be113fc1d9594fddb74e2725c10478e91d"
 FETCH_MODELS=""
 for arg in "$@"; do
   case "$arg" in
@@ -77,7 +81,25 @@ if [ -n "$FETCH_MODELS" ] && [ ! -f model/segmentation/onnx/model.onnx ]; then
   if [ -d "$tmp/detection_model" ];  then mv "$tmp/detection_model"  model/detection;  fi
   if [ -d "$tmp/segmentation_model" ]; then mv "$tmp/segmentation_model" model/segmentation; fi
   if [ -d "$tmp/similarity_model" ]; then mv "$tmp/similarity_model" model/similarity; fi
-  if [ -d "$tmp/tracking_model" ];   then mv "$tmp/tracking_model"   model/tracking;   fi
+
+  # The opt-in tracker, straight from the OpenCV zoo. A failed download is a
+  # warning (nothing passes --tracker-model by default); a checksum mismatch
+  # is fatal.
+  if [ ! -f model/tracking/object_tracking_vittrack_2023sep.onnx ]; then
+    if curl -fsSL -o "$tmp/vittrack.onnx" "$TRACKER_URL" 2>/dev/null; then
+      got="$(shasum -a 256 "$tmp/vittrack.onnx" 2>/dev/null | awk '{print $1}')"
+      [ -n "$got" ] || got="$(sha256sum "$tmp/vittrack.onnx" | awk '{print $1}')"
+      if [ "$got" != "$TRACKER_SHA256" ]; then
+        echo "error: tracker checksum mismatch — expected $TRACKER_SHA256, got $got" >&2
+        exit 1
+      fi
+      mkdir -p model/tracking
+      mv "$tmp/vittrack.onnx" model/tracking/object_tracking_vittrack_2023sep.onnx
+      echo "tracker fetched (OpenCV zoo vitTracker)"
+    else
+      echo "warning: could not fetch the optional tracker from $TRACKER_URL" >&2
+    fi
+  fi
 fi
 
 # Smoke: the offline engine suite + the CLI itself.

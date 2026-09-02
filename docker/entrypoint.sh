@@ -46,6 +46,28 @@ if [ ! -f "$SEG" ] && [ ! -f "$BOX" ]; then
   trap - EXIT
 fi
 
+# The opt-in tracker, straight from the OpenCV zoo (the URL floats on their
+# main branch; the pinned checksum holds the version still). Opt-in at
+# runtime, so a failed download is a warning — but a download that disagrees
+# with the checksum is always fatal.
+TRACKER="$MODELS/tracking_model/object_tracking_vittrack_2023sep.onnx"
+if [ ! -f "$TRACKER" ]; then
+  TRACKER_TMP="$(mktemp)"
+  if curl -fsSL -o "$TRACKER_TMP" "$CARDSTREAM_TRACKER_URL" 2>/dev/null; then
+    got="$(sha256sum "$TRACKER_TMP" | awk '{print $1}')"
+    if [ "$got" != "$CARDSTREAM_TRACKER_SHA256" ]; then
+      echo "[cardstream] error: tracker checksum mismatch — expected $CARDSTREAM_TRACKER_SHA256, got $got" >&2
+      exit 1
+    fi
+    mkdir -p "$MODELS/tracking_model"
+    mv "$TRACKER_TMP" "$TRACKER"
+    echo "[cardstream] tracker fetched (OpenCV zoo vitTracker)"
+  else
+    rm -f "$TRACKER_TMP"
+    echo "[cardstream] warning: could not fetch the optional tracker from $CARDSTREAM_TRACKER_URL" >&2
+  fi
+fi
+
 # The locator we supply, unless the caller named one of their own: the two
 # model flags are mutually exclusive, so adding ours unconditionally turned
 # `docker run ... cardstream --detector-model mine.onnx` into a "pick one"

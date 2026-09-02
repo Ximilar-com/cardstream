@@ -31,9 +31,12 @@ RUN chmod +x /usr/local/bin/cardstream-entrypoint \
 USER cardstream
 
 # One archive per model so a retrain republishes one file; bump the one that
-# changed here.
+# changed here. The opt-in tracker comes straight from the OpenCV zoo — its
+# URL floats on their main branch, so the pinned checksum holds the version.
 ENV CARDSTREAM_MODELS_BASE_URL="https://cardstream.ai/models" \
-    CARDSTREAM_MODEL_ARCHIVES="cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz cardstream-tracking-v1.tar.gz"
+    CARDSTREAM_MODEL_ARCHIVES="cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz" \
+    CARDSTREAM_TRACKER_URL="https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx" \
+    CARDSTREAM_TRACKER_SHA256="2990f0b7cd44d92afa48cd97db6de7be113fc1d9594fddb74e2725c10478e91d"
 VOLUME /models
 EXPOSE 8001
 ENTRYPOINT ["cardstream-entrypoint"]

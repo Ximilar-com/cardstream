@@ -13,6 +13,7 @@
 #   CARDSTREAM_EXTRAS      pip extras                            (default client,onnx)
 #   CARDSTREAM_MODELS_BASE_URL  where the model tarballs live
 #   CARDSTREAM_MODEL_ARCHIVES   space-separated tarball names to fetch from there
+#   CARDSTREAM_TRACKER_URL      the opt-in vitTracker .onnx (default: OpenCV zoo)
 #   CARDSTREAM_WHEEL       path to a local wheel — skips the GitHub download (testing)
 set -eu
 
@@ -24,7 +25,12 @@ EXTRAS="${CARDSTREAM_EXTRAS:-client,onnx}"
 # republishes one archive without touching the others. Bump the one that
 # changed here.
 MODELS_BASE_URL="${CARDSTREAM_MODELS_BASE_URL:-https://cardstream.ai/models}"
-MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz cardstream-tracking-v1.tar.gz}"
+MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz}"
+# The opt-in visual tracker is OpenCV's own published vitTracker, fetched from
+# the OpenCV zoo rather than republished. The URL floats on their main branch,
+# so the pinned checksum below is what holds the version still.
+TRACKER_URL="${CARDSTREAM_TRACKER_URL:-https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx}"
+TRACKER_SHA256="2990f0b7cd44d92afa48cd97db6de7be113fc1d9594fddb74e2725c10478e91d"
 VERSION="${CARDSTREAM_VERSION:-}"
 
 say()  { printf '\033[1m[cardstream]\033[0m %s\n' "$*"; }
@@ -151,6 +157,25 @@ else
   done
   [ -f "$SEG" ] || [ -f "$BOX" ] \
     || fail "model archives contained no card locator (segmentation_model/onnx/model.onnx or detection_model/model.onnx)"
+fi
+
+# The opt-in tracker, straight from the OpenCV zoo. Outside the block above so
+# a re-run adds it to an install made before it was fetched. It is opt-in at
+# runtime (nothing passes --tracker-model by default), so a failed download is
+# a warning, not a failed install — but a download that DISAGREES with the
+# pinned checksum is always fatal.
+TRACKER="$MODELS/tracking_model/object_tracking_vittrack_2023sep.onnx"
+if [ ! -f "$TRACKER" ]; then
+  if curl -fsSL -o "$TMP/vittrack.onnx" "$TRACKER_URL" 2>/dev/null; then
+    got="$(sha256_file "$TMP/vittrack.onnx")"
+    [ "$got" = "$TRACKER_SHA256" ] \
+      || fail "tracker checksum mismatch — expected $TRACKER_SHA256, got $got. Refusing to install it."
+    mkdir -p "$MODELS/tracking_model"
+    mv "$TMP/vittrack.onnx" "$TRACKER"
+    say "tracker fetched (OpenCV zoo vitTracker)"
+  else
+    warn "could not fetch the optional tracker from $TRACKER_URL — pass --tracker-model with your own copy if you want tracking"
+  fi
 fi
 
 # Which locator the shims will pass. The segmentor is what a source checkout

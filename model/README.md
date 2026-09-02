@@ -27,9 +27,10 @@ under. Downloads are published with each release; the table is the index.
 > **Download links are not live yet.** The columns below are final; the
 > `Download` and `SHA256` cells are filled in at publication. Until then the
 > installer and the Docker image fetch one tarball per model
-> (`cardstream-segmentation-v1.tar.gz`, `cardstream-similarity-v1.tar.gz`,
-> `cardstream-tracking-v1.tar.gz`), each versioned independently so a retrain
-> republishes one archive without touching the others.
+> (`cardstream-segmentation-v1.tar.gz`, `cardstream-similarity-v1.tar.gz`),
+> each versioned independently so a retrain republishes one archive without
+> touching the others. The opt-in tracker is fetched straight from the OpenCV
+> zoo, pinned by checksum.
 
 | Model | Task | Architecture | Input | Params/Size | Runtime | Latency (CPU) | Flag | Weights licence | Download | SHA256 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -75,7 +76,8 @@ licence-encumbered model does not belong in this folder.
 Docker image fetch the published per-model tarballs into their own directory
 (`~/.cardstream/models`, `/models`) which still uses the flat
 `segmentation_model/` / `similarity_model/` / `tracking_model/` names
-(`detection_model/` from an older publication). Each
+(`detection_model/` from an older publication; `tracking_model/` holds the
+OpenCV-zoo vitTracker, fetched from upstream and pinned by checksum). Each
 tarball is versioned independently of the checkout, so the shims those scripts
 write resolve the locator from what actually unpacked — the segmentor when it
 is there, the box detector otherwise — and pass the paths, so you never type

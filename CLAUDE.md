@@ -571,8 +571,10 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   weights in them, and `scripts/install.sh` + the Docker image do NOT use this
   layout — they fetch one separately versioned tarball PER MODEL (so a retrain
   republishes one archive) whose internal names are
-  still flat (`segmentation_model/`, `similarity_model/`, `tracking_model/`)
-  into their own directory, and write shims that pass the right paths. Those
+  still flat (`segmentation_model/`, `similarity_model/`) into their own
+  directory — the opt-in vitTracker comes straight from the OpenCV zoo,
+  pinned by checksum, into `tracking_model/` — and write shims that pass the
+  right paths. Those
   shims RESOLVE the locator from what unpacked (segmentor preferred, box
   detector as the fallback for an older publication) and skip it entirely when you
   pass a locator flag yourself — the two are mutually exclusive, so an
