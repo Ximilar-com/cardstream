@@ -26,8 +26,10 @@ under. Downloads are published with each release; the table is the index.
 
 > **Download links are not live yet.** The columns below are final; the
 > `Download` and `SHA256` cells are filled in at publication. Until then the
-> installer and the Docker image fetch the bundled tarball
-> (`cardstream-models-v1.tar.gz`), which contains the two required weights.
+> installer and the Docker image fetch one tarball per model
+> (`cardstream-segmentation-v1.tar.gz`, `cardstream-similarity-v1.tar.gz`,
+> `cardstream-tracking-v1.tar.gz`), each versioned independently so a retrain
+> republishes one archive without touching the others.
 
 | Model | Task | Architecture | Input | Params/Size | Runtime | Latency (CPU) | Flag | Weights licence | Download | SHA256 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -70,9 +72,10 @@ Everything here is Apache-2.0 end to end (models, weights, training stacks); a
 licence-encumbered model does not belong in this folder.
 
 **The installed layout is not this layout.** `scripts/install.sh` and the
-Docker image fetch a published weights tarball into their own directory
+Docker image fetch the published per-model tarballs into their own directory
 (`~/.cardstream/models`, `/models`) which still uses the flat
-`detection_model/` / `segmentation_model/` / `similarity_model/` names. That
+`segmentation_model/` / `similarity_model/` / `tracking_model/` names
+(`detection_model/` from an older publication). Each
 tarball is versioned independently of the checkout, so the shims those scripts
 write resolve the locator from what actually unpacked — the segmentor when it
 is there, the box detector otherwise — and pass the paths, so you never type

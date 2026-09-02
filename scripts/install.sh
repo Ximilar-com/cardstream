@@ -11,7 +11,8 @@
 #   INSTALL_DIR            where the cardstream-* shims go       (default ~/.local/bin)
 #   CARDSTREAM_VERSION     release tag to install, e.g. v0.2.0   (default: latest)
 #   CARDSTREAM_EXTRAS      pip extras                            (default client,onnx)
-#   CARDSTREAM_MODELS_URL  models tarball URL
+#   CARDSTREAM_MODELS_BASE_URL  where the model tarballs live
+#   CARDSTREAM_MODEL_ARCHIVES   space-separated tarball names to fetch from there
 #   CARDSTREAM_WHEEL       path to a local wheel — skips the GitHub download (testing)
 set -eu
 
@@ -19,7 +20,11 @@ REPO="Ximilar-com/cardstream"
 CARDSTREAM_HOME="${CARDSTREAM_HOME:-$HOME/.cardstream}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 EXTRAS="${CARDSTREAM_EXTRAS:-client,onnx}"
-MODELS_URL="${CARDSTREAM_MODELS_URL:-https://cardstream.ai/models/cardstream-models-v1.tar.gz}"
+# Each model ships as its OWN tarball, versioned independently, so a retrain
+# republishes one archive without touching the others. Bump the one that
+# changed here.
+MODELS_BASE_URL="${CARDSTREAM_MODELS_BASE_URL:-https://cardstream.ai/models}"
+MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz cardstream-tracking-v1.tar.gz}"
 VERSION="${CARDSTREAM_VERSION:-}"
 
 say()  { printf '\033[1m[cardstream]\033[0m %s\n' "$*"; }
@@ -104,12 +109,13 @@ else
 fi
 
 # --- model weights ----------------------------------------------------------
-# Tarball layout contract: top-level detection_model/, segmentation_model/,
-# similarity_model/, models/. Deliberately NOT the
-# model/{detection,segmentation,similarity,tracking} layout a checkout uses —
-# this unpacks into its own directory and the tarball is versioned separately,
-# so the two only have to agree with themselves. The shims below carry the
-# paths, so nobody types either layout.
+# Layout contract: each per-model tarball unpacks a top-level directory —
+# segmentation_model/, similarity_model/, tracking_model/ (detection_model/
+# from an older publication) — side by side into $MODELS. Deliberately NOT
+# the model/{detection,segmentation,similarity,tracking} layout a checkout
+# uses: this unpacks into its own directory and the tarballs are versioned
+# separately, so the two only have to agree with themselves. The shims below
+# carry the paths, so nobody types either layout.
 MODELS="$CARDSTREAM_HOME/models"
 SEG="$MODELS/segmentation_model/onnx/model.onnx"
 BOX="$MODELS/detection_model/model.onnx"
@@ -118,36 +124,39 @@ if [ -f "$SEG" ] || [ -f "$BOX" ]; then
 else
   say "fetching model weights..."
   mkdir -p "$MODELS"
-  # To a FILE first, not straight into tar: a pipe cannot be verified, and
-  # this is a quarter of a gigabyte of code-adjacent data fetched over the
-  # network. The wheel a few lines up is checksummed; so is this.
-  curl -fsSL -o "$TMP/models.tar.gz" "$MODELS_URL" \
-    || fail "could not fetch models from $MODELS_URL — set CARDSTREAM_MODELS_URL or see https://cardstream.ai/download/"
+  for archive in $MODEL_ARCHIVES; do
+    url="$MODELS_BASE_URL/$archive"
+    # To a FILE first, not straight into tar: a pipe cannot be verified, and
+    # this is code-adjacent data fetched over the network. The wheel a few
+    # lines up is checksummed; so is this.
+    curl -fsSL -o "$TMP/$archive" "$url" \
+      || fail "could not fetch $url — set CARDSTREAM_MODELS_BASE_URL or see https://cardstream.ai/download/"
 
-  # The sums file sits beside the tarball. Absent (an older publication, or a
-  # CARDSTREAM_MODELS_URL of your own) we warn rather than refuse -- but a
-  # sums file that DISAGREES is always fatal.
-  if curl -fsSL -o "$TMP/models.sha256" "${MODELS_URL}.sha256" 2>/dev/null; then
-    want="$(awk '{print $1}' "$TMP/models.sha256")"
-    got="$(sha256_file "$TMP/models.tar.gz")"
-    [ "$want" = "$got" ] \
-      || fail "models checksum mismatch — expected $want, got $got. Refusing to unpack."
-    say "model weights verified"
-  else
-    warn "no checksum published for $MODELS_URL — cannot verify the weights"
-  fi
+    # The sums file sits beside each tarball. Absent (an older publication, or
+    # a base URL of your own) we warn rather than refuse -- but a sums file
+    # that DISAGREES is always fatal.
+    if curl -fsSL -o "$TMP/$archive.sha256" "$url.sha256" 2>/dev/null; then
+      want="$(awk '{print $1}' "$TMP/$archive.sha256")"
+      got="$(sha256_file "$TMP/$archive")"
+      [ "$want" = "$got" ] \
+        || fail "$archive checksum mismatch — expected $want, got $got. Refusing to unpack."
+      say "$archive verified"
+    else
+      warn "no checksum published for $url — cannot verify the weights"
+    fi
 
-  tar -xzf "$TMP/models.tar.gz" -C "$MODELS" \
-    || fail "could not unpack the models tarball"
-  rm -f "$TMP/models.tar.gz" "$TMP/models.sha256"
+    tar -xzf "$TMP/$archive" -C "$MODELS" \
+      || fail "could not unpack $archive"
+    rm -f "$TMP/$archive" "$TMP/$archive.sha256"
+  done
   [ -f "$SEG" ] || [ -f "$BOX" ] \
-    || fail "models tarball contained no card locator (segmentation_model/onnx/model.onnx or detection_model/model.onnx)"
+    || fail "model archives contained no card locator (segmentation_model/onnx/model.onnx or detection_model/model.onnx)"
 fi
 
 # Which locator the shims will pass. The segmentor is what a source checkout
 # runs by default — deskewed, tight crops — so prefer it, and fall back to the
-# box detector for a tarball published before it shipped. Resolved HERE rather
-# than hardcoded, because the tarball is versioned independently of this script.
+# box detector for archives published before it shipped. Resolved HERE rather
+# than hardcoded, because the archives are versioned independently of this script.
 if [ -f "$SEG" ]; then
   LOCATOR_FLAG="--segmentor-model"
   LOCATOR_MODEL="$SEG"

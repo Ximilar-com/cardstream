@@ -8,7 +8,8 @@
 #   docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:8001:8001 \
 #     -v cardstream-models:/models cardstream
 #
-# Model weights are fetched into /models on first run (CARDSTREAM_MODELS_URL);
+# Model weights are fetched into /models on first run — one tarball per model,
+# versioned independently (CARDSTREAM_MODELS_BASE_URL + CARDSTREAM_MODEL_ARCHIVES);
 # mount a pre-populated directory (-v ./models:/models) to skip the fetch.
 FROM python:3.12-slim
 
@@ -29,7 +30,10 @@ RUN chmod +x /usr/local/bin/cardstream-entrypoint \
     && mkdir /models && chown cardstream /models
 USER cardstream
 
-ENV CARDSTREAM_MODELS_URL="https://cardstream.ai/models/cardstream-models-v1.tar.gz"
+# One archive per model so a retrain republishes one file; bump the one that
+# changed here.
+ENV CARDSTREAM_MODELS_BASE_URL="https://cardstream.ai/models" \
+    CARDSTREAM_MODEL_ARCHIVES="cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz cardstream-tracking-v1.tar.gz"
 VOLUME /models
 EXPOSE 8001
 ENTRYPOINT ["cardstream-entrypoint"]

@@ -569,10 +569,11 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
 - **`model/` is gitignored except its README** (weights + training artifacts,
   ~250 MB for the segmentor alone). The subfolders only exist once you put
   weights in them, and `scripts/install.sh` + the Docker image do NOT use this
-  layout — they fetch a separately versioned tarball whose internal names are
-  still flat (`detection_model/`, `segmentation_model/`, `similarity_model/`)
+  layout — they fetch one separately versioned tarball PER MODEL (so a retrain
+  republishes one archive) whose internal names are
+  still flat (`segmentation_model/`, `similarity_model/`, `tracking_model/`)
   into their own directory, and write shims that pass the right paths. Those
   shims RESOLVE the locator from what unpacked (segmentor preferred, box
-  detector as the fallback for an older tarball) and skip it entirely when you
+  detector as the fallback for an older publication) and skip it entirely when you
   pass a locator flag yourself — the two are mutually exclusive, so an
   unconditional one turned your own `--detector-model` into a "pick one" error.
