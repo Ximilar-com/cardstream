@@ -91,7 +91,9 @@ else
   curl -fsSL -o "$TMP/SHA256SUMS" "$BASE/SHA256SUMS" \
     || fail "download failed: $BASE/SHA256SUMS"
 
-  WANT="$(awk -v f="$WHEEL" '$2 == f || $NF == f { print $1; exit }' "$TMP/SHA256SUMS")"
+  # The name field may carry a "./" prefix (sha256sum ./* wrote the v0.2.0
+  # sums that way) — strip it before comparing.
+  WANT="$(awk -v f="$WHEEL" '{ n = $NF; sub(/^\.\//, "", n) } n == f { print $1; exit }' "$TMP/SHA256SUMS")"
   [ -n "$WANT" ] || fail "$WHEEL missing from SHA256SUMS"
   GOT="$(sha256_file "$TMP/$WHEEL")"
   [ "$WANT" = "$GOT" ] || fail "checksum mismatch for $WHEEL

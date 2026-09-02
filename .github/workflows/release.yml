@@ -56,7 +56,8 @@ jobs:
         run: |
           cp scripts/install.sh dist/install.sh
           cd dist
-          sha256sum ./* > SHA256SUMS.tmp
+          # Bare names, not ./*: install.sh looks the wheel up by filename.
+          sha256sum -- * > SHA256SUMS.tmp
           mv SHA256SUMS.tmp SHA256SUMS
           cat SHA256SUMS
 
