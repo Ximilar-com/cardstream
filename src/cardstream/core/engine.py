@@ -63,7 +63,10 @@ class CallGuard:
         self._timeout = timeout_seconds
         self._log = log
         self.in_flight = False
-        self.last_start_ts = 0.0
+        # -inf, not 0.0: time.monotonic() counts from boot on Linux, so on a
+        # young machine 0.0 would throttle the FIRST call as if one had just
+        # fired. -inf is the same "never called" sentinel expire() uses.
+        self.last_start_ts = float("-inf")
 
     def watchdog(self, now: float) -> None:
         if self.in_flight and (now - self.last_start_ts) > self._timeout:
