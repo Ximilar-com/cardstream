@@ -90,12 +90,16 @@ leaves the process — there is no service in the path.
 at startup until you supply them. The installer and the Docker image fetch them
 for you.
 
-| Weight | Flag | Required |
-| --- | --- | --- |
-| **segmentation** — finds the card's outline, so the crop is deskewed and cut tight | `--segmentor-model` | **yes — the default locator** |
-| **similarity** — the embedding the identity gate compares crops with | `--embed-model` | **yes by default** (`--gate phash` needs none) |
-| detection — finds a bounding box instead | `--detector-model` | no — opt-in, replaces the segmentor |
-| tracking — carries the box between detections | `--tracker-model` | no — opt-in |
+| Weight | Flag | Required | Download |
+| --- | --- | --- | --- |
+| **segmentation** — finds the card's outline, so the crop is deskewed and cut tight | `--segmentor-model` | **yes — the default locator** | [cardstream-segmentation-v1.tar.gz](https://github.com/Ximilar-com/cardstream/releases/download/v1.0.0/cardstream-segmentation-v1.tar.gz) (108 MB) |
+| **similarity** — the embedding the identity gate compares crops with | `--embed-model` | **yes by default** (`--gate phash` needs none) | [cardstream-similarity-v1.tar.gz](https://github.com/Ximilar-com/cardstream/releases/download/v1.0.0/cardstream-similarity-v1.tar.gz) (18 MB) |
+| detection — finds a bounding box instead | `--detector-model` | no — opt-in, replaces the segmentor | not published — export your own (see [`model/README.md`](model/README.md)) |
+| tracking — carries the box between detections | `--tracker-model` | no — opt-in | [vitTracker from the OpenCV zoo](https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx) |
+
+Each tarball unpacks to a flat folder (`segmentation_model/`,
+`similarity_model/`) with the `.onnx` inside; a `.sha256` file sits next to
+each one on the [release page](https://github.com/Ximilar-com/cardstream/releases/tag/v1.0.0).
 
 Full details, download table and each export's I/O contract:
 **[`model/README.md`](model/README.md)** and the

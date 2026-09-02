@@ -24,20 +24,21 @@ cardstream-web --segmentor-model model/segmentation/onnx/model.onnx \
 Every weight cardstream can load, what it costs, and what it is licensed
 under. Downloads are published with each release; the table is the index.
 
-> **Download links are not live yet.** The columns below are final; the
-> `Download` and `SHA256` cells are filled in at publication. Until then the
-> installer and the Docker image fetch one tarball per model
-> (`cardstream-segmentation-v1.tar.gz`, `cardstream-similarity-v1.tar.gz`),
+> The installer and the Docker image fetch one tarball per model
+> (`cardstream-segmentation-v1.tar.gz`, `cardstream-similarity-v1.tar.gz`)
+> from the [v1.0.0 release](https://github.com/Ximilar-com/cardstream/releases/tag/v1.0.0),
 > each versioned independently so a retrain republishes one archive without
-> touching the others. The opt-in tracker is fetched straight from the OpenCV
-> zoo, pinned by checksum.
+> touching the others. The `Download` column below points at the same files;
+> the `SHA256` column is the tarball's (or the tracker's `.onnx`'s) checksum,
+> the one `scripts/install.sh` verifies. The opt-in tracker is fetched straight
+> from the OpenCV zoo, pinned by that checksum.
 
 | Model | Task | Architecture | Input | Params/Size | Runtime | Latency (CPU) | Flag | Weights licence | Download | SHA256 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `cardstream-seg-nano` | instance segmentation — the card's outline | RF-DETR Seg Nano | 312x312 | 125 MB (.onnx) | onnxruntime | ~82 ms/frame | `--segmentor-model` **(default)** | Apache-2.0 | — | — |
-| `cardstream-embed-mnv2` | embedding — the same-card identity gate | MobileNetV2 | 384x384 | 9.8 MB (.onnx) | onnxruntime / torch / LiteRT | ~5 ms/crop | `--embed-model` **(default)** | Apache-2.0 | — | — |
-| `cardstream-det` | detection — a bounding box | RF-DETR / RT-DETRv2 | varies | — | onnxruntime / transformers | ~80-150 ms/frame | `--detector-model` | Apache-2.0 | — | — |
-| `vittrack` | visual tracking — carries the box between detections | TrackerVit | 128x128 | 698 KB (.onnx) | OpenCV | ~2.7 ms/frame | `--tracker-model` | Apache-2.0 | [OpenCV zoo](https://huggingface.co/opencv/object_tracking_vittrack) | — |
+| `cardstream-seg-nano` | instance segmentation — the card's outline | RF-DETR Seg Nano | 312x312 | 125 MB (.onnx) | onnxruntime | ~82 ms/frame | `--segmentor-model` **(default)** | Apache-2.0 | [cardstream-segmentation-v1.tar.gz](https://github.com/Ximilar-com/cardstream/releases/download/v1.0.0/cardstream-segmentation-v1.tar.gz) | `94af531c4fea1e17fcdf393f5bf1cc257a54c8a9ab1eb402e1e8b37213249fd9` |
+| `cardstream-embed-mnv2` | embedding — the same-card identity gate | MobileNetV2 | 384x384 | 9.8 MB (.onnx) | onnxruntime / torch / LiteRT | ~5 ms/crop | `--embed-model` **(default)** | Apache-2.0 | [cardstream-similarity-v1.tar.gz](https://github.com/Ximilar-com/cardstream/releases/download/v1.0.0/cardstream-similarity-v1.tar.gz) | `f45ac9756dd621f021809f3237e5c06ce82377d4d6b1f3b8f6951804cd0369e2` |
+| `cardstream-det` | detection — a bounding box | RF-DETR / RT-DETRv2 | varies | — | onnxruntime / transformers | ~80-150 ms/frame | `--detector-model` | Apache-2.0 | not published — export from the detector pipelines | — |
+| `vittrack` | visual tracking — carries the box between detections | TrackerVit | 128x128 | 698 KB (.onnx) | OpenCV | ~2.7 ms/frame | `--tracker-model` | Apache-2.0 | [OpenCV zoo](https://github.com/opencv/opencv_zoo/raw/main/models/object_tracking_vittrack/object_tracking_vittrack_2023sep.onnx) | `2990f0b7cd44d92afa48cd97db6de7be113fc1d9594fddb74e2725c10478e91d` |
 
 **Two licences, not one.** Each row states the licence of the *weights*. The
 *architecture* is separately Apache-2.0 in every case — RF-DETR from Roboflow,
