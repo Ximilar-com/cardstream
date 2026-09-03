@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-03
+
 ### Added
 - A light/dark theme switch (☀/☾, top right of the web client). Follows the
   system setting until you pick; the pick is remembered by the browser.
@@ -24,8 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ruff`, `mypy`, and a `pre-commit` configuration; `make check`, `make lint`,
   `make format`, `make typecheck`.
 - `uv.lock`, so CI and contributor environments are reproducible.
-- `CONTRIBUTING.md`, `SECURITY.md`, this changelog, and issue forms that
-  require the startup banner.
+- `CONTRIBUTING.md`, this changelog, and issue forms that require the
+  startup banner.
 
 ### Changed
 - `pydantic` is now a declared dependency of the `client` extra. It was always
