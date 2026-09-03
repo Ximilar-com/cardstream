@@ -54,6 +54,25 @@ _IDENT = {
         "year": 1999,
         "subcategory": "Pokemon",
         "links": {"ximilar": "https://example.com/4"},
+        # Only with the top-level price_stats request flag; the trend block
+        # and std/range are dropped on the way in.
+        "price_stats": [
+            {
+                "stats_type": "ungraded",
+                "interval": "overall",
+                "start_date": None,
+                "value": {
+                    "min": 15.0,
+                    "max": 60.0,
+                    "median": 24.99,
+                    "std": 14.52,
+                    "range": 45.0,
+                    "latest": 55.0,
+                    "latest_date": "2026-02-22",
+                    "trend": {"forecast_30d": 55.3},
+                },
+            }
+        ],
     },
     "distances": [0.05],
     "alternatives": [
@@ -71,6 +90,10 @@ def test_parse_identification_on_record():
     assert ident.distance == pytest.approx(0.05)
     assert ident.confidence_tier is ConfidenceTier.HIGH
     assert len(ident.alternatives) == 1
+    (prices,) = ident.price_stats
+    assert prices["stats_type"] == "ungraded" and prices["median"] == 24.99
+    assert prices["latest_date"] == "2026-02-22"
+    assert "trend" not in prices and "std" not in prices
 
 
 def test_parse_identification_in_objects():
@@ -97,6 +120,7 @@ def test_parse_missing_distances_defaults_to_low():
     assert ident is not None
     assert ident.distance == 1.0
     assert ident.confidence_tier is ConfidenceTier.LOW
+    assert ident.price_stats == []  # not asked for -> not there, not an error
 
 
 # --- detection object helpers ----------------------------------------------

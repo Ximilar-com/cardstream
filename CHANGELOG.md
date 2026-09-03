@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `--price-stats` (off unless passed; also a switch in the ⚙ dialog): every
+  identification asks the id endpoint for aggregated USD market prices and
+  shows them on the card panel, in each history row and on the terminal.
 - Apache-2.0 `LICENSE` and a `NOTICE` attributing the Apache-2.0 upstreams
   (RF-DETR, RT-DETRv2, OpenCV zoo vitTracker, MobileNetV2).
 - Full packaging metadata: readme, licence expression, authors, keywords,

@@ -35,6 +35,7 @@ cardstream-client --source card.jpg --loop
 cardstream-web --game "One Piece"       # prefill the game — faster, more precise tcg_id
 cardstream-web --set-code PBL           # restrict matching to one set
 cardstream-web --alphabet japanese      # japanese cards — see the warning below
+cardstream-web --price-stats            # USD market prices with every match (tcg / sport / comics)
 cardstream-web --camera-width 3840      # ask the webcam for more pixels to identify from
 cardstream-web --store-images crops/    # keep every crop that was paid for
 cardstream-web --store-images shots/ --store-images-type frame   # …or the whole frame
@@ -113,6 +114,21 @@ passed through verbatim (codes are not all upper-case). `--no-known-attrs`
 drops the Side/Rotation assertions so the endpoint classifies backs and
 rotated cards itself.
 
+**`--price-stats` asks for market prices with every match.** Off unless you
+pass it; on, the POST body carries the flag at the top level beside the
+records — `{"records": [{…}], "price_stats": true}` — and the best match
+comes back with aggregated sale statistics per `stats_type` (`ungraded`,
+`graded`, `overall`). The amounts are USD; the API names no currency. The
+page shows the median, the min–max range and the latest sale with its date
+on the card panel, and one line per history row —
+`ungraded $24.99 (15–60) · graded $45.00 (30–80)` — which is also what
+`cardstream-client` prints under its `[IDENTIFIED]` line. `overall` is shown
+only when the card has neither ungraded nor graded sales. Only `tcg_id`,
+`sport_id` and `comics_id` document the flag, so on slab it is not sent (the
+switch stays on and applies again when you switch back). Ximilar does not
+say whether the extra data costs credits, which is why it is opt-in. The ⚙
+dialog toggles it live; the next paid call follows.
+
 **`--alphabet` matters more than it looks.** It is **omitted by default** —
 no `Alphabet` in the record, so the endpoint classifies the writing system
 itself. But prefilling `Subcategory` (i.e. setting a game) switches that
@@ -136,6 +152,7 @@ The smart page keeps the Game dropdown at the top of the right panel with a
 | Alphabet | The record's `Alphabet`: `Not Specified` (default — field omitted), `latin`, `japanese`, `chinese`, `korean`, `thai` |
 | Set code | The record's `set_code` |
 | Assume front side, upright | On: send `Side: front` + `Rotation: rotation_ok`. Off: let the endpoint decide |
+| Market price statistics | On: send the top-level `price_stats` flag; the card panel and every history row show the USD median, range and latest sale (tcg / sport / comics only) |
 | Result threshold | `--result-threshold` retuned live on every running analyzer |
 | Send rate, Show detection box | Page-local: capture fps and the bbox overlay |
 

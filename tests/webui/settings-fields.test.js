@@ -33,6 +33,7 @@ function state(overrides = {}) {
     alphabets: [NOT_SPECIFIED, "latin", "japanese"],
     set_code: "",
     known_attrs: true,
+    price_stats: false,
     result_threshold: 0.8,
     camera_width: 1920,
     send_width: 1920,
@@ -98,6 +99,13 @@ test("several edits are sent together", () => {
     set_code: "PBL",
     known_attrs: false,
   });
+});
+
+test("a price-stats-only edit posts only that switch", () => {
+  const s = state();
+  const draft = draftFrom(s);
+  draft.price_stats = true;
+  assert.deepEqual(dirtyPatch(draft, s), { price_stats: true });
 });
 
 test("clearing a field is a change, not an absence", () => {

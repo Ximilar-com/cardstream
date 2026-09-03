@@ -16,6 +16,7 @@ from typing import Any
 import requests
 
 from cardstream.core.models import ConfidenceTier, Identification
+from cardstream.core.prices import parse_price_stats
 
 logger = logging.getLogger("cardstream.ximilar")
 
@@ -175,4 +176,5 @@ def parse_best_match(
             }
             for a in (ident.get("alternatives") or [])[:4]
         ],
+        price_stats=parse_price_stats(best.get("price_stats")),
     )

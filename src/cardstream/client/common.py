@@ -30,6 +30,7 @@ from cardstream.core.detectors import (
 from cardstream.core.id_types import ALPHABETS, ID_TYPES
 from cardstream.core.identify_options import IdentifyOptions
 from cardstream.core.image_store import FRAME, OBJECT, STORE_TYPES, ImageStore
+from cardstream.core.prices import price_summary
 from cardstream.core.tracking import make_tracker
 
 # Tuning defaults shown in --help and used when a flag is omitted.
@@ -187,6 +188,17 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         help="assert Side=front + Rotation=rotation_ok on the record "
         "(default); --no-known-attrs lets the endpoint classify "
         "side and rotation itself (backs, rotated cards)",
+    )
+    ident.add_argument(
+        "--price-stats",
+        "--price_stats",
+        dest="price_stats",
+        action="store_true",
+        help="ask the id endpoint for market price statistics with every "
+        "match — USD median, range and latest sale, shown on the page and "
+        "in the terminal. tcg, sport and comics only (slab has none); off "
+        "by default, since the extra data is not documented as free. The "
+        "web UI's settings dialog toggles it live.",
     )
     ident.add_argument(
         "--store-images",
@@ -463,7 +475,7 @@ def _image_store(args) -> ImageStore | None:
 
 def _identify_options(args) -> IdentifyOptions:
     """The prefill bundle every identify call carries. Built once and handed to
-    the client, which is what stopped two call sites spelling the same five
+    the client, which is what stopped two call sites spelling the same six
     fields out separately (in different orders). ValueError here is
     user-facing: a bad --type/--game/--alphabet."""
     return IdentifyOptions(
@@ -472,6 +484,7 @@ def _identify_options(args) -> IdentifyOptions:
         set_code=getattr(args, "set_code", None),
         known_attrs=args.known_attrs,
         alphabet=args.alphabet,
+        price_stats=args.price_stats,
     )
 
 
@@ -596,6 +609,8 @@ def build_pipeline(args) -> Pipeline:
     target = f"ximilar {args.type}_id"
     if options.set_code:
         target += f" [set_code={options.set_code}]"
+    if options.price_stats:
+        target += " [price_stats]"
     return Pipeline(
         detector=detector,
         embedder=embedder,
@@ -618,5 +633,10 @@ def print_identification(ident: dict) -> None:
         f"| set={ident.get('set')} #{ident.get('card_number')} "
         f"| tier={ident.get('confidence_tier')} dist={dist_s}{elapsed_s}"
     )
+    # Only when the call asked for prices AND the endpoint had sales: the
+    # same one-line summary the page puts on the history row.
+    summary = price_summary(ident.get("price_stats") or [])
+    if summary:
+        print(f"             price: {summary}")
     for link_name, url in (ident.get("links") or {}).items():
         print(f"             {link_name}: {url}")

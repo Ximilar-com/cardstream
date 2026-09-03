@@ -93,6 +93,10 @@ class Identification:
     confidence_tier: ConfidenceTier
     links: dict[str, str] = field(default_factory=dict)
     alternatives: list[dict[str, Any]] = field(default_factory=list)
+    # Market price statistics for the best match — the flat entries of
+    # core.prices.parse_price_stats. Empty unless the call asked for them
+    # (--price-stats) and the endpoint had sales to aggregate.
+    price_stats: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

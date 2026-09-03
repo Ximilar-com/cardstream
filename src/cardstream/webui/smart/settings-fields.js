@@ -61,6 +61,15 @@ export const FIELDS = [
       "Turn off for backs or rotated cards.",
   },
   {
+    key: "price_stats",
+    kind: "switch",
+    label: "Market price statistics",
+    hint:
+      "Asks for USD price statistics (median, range, latest sale) with every " +
+      "match — tcg, sport and comics only; slab has none. Shown on the card " +
+      "and in History.",
+  },
+  {
     key: "result_threshold",
     kind: "range",
     label: "Result threshold",

@@ -125,7 +125,9 @@ src/cardstream/
     _onnx.py         shared onnxruntime session bootstrap (detectors + embedders)
     id_types.py      THE id-type registry: one frozen IdType per endpoint (key,
                      label, url, category_attrs = the Top Category/Category pair,
-                     subcategories = display name → "Subcategory") in ID_TYPES,
+                     subcategories = display name → "Subcategory",
+                     price_stats = whether the endpoint documents the
+                     top-level request flag) in ID_TYPES,
                      plus resolve_id_type(key, noun=…) — the ONLY validation site,
                      noun= just picks the wording ("type" for ?type=, "category"
                      for the settings dialog). Also ALPHABETS +
@@ -141,7 +143,8 @@ src/cardstream/
                      hands each record's _base64 to an ImageStore
                      (--store-images) before the POST
     identify_options.py  IdentifyOptions — the frozen (id_type, game, set_code,
-                     known_attrs, alphabet) bundle every identify call carries,
+                     known_attrs, alphabet, price_stats) bundle every identify
+                     call carries,
                      normalized once in __post_init__. .with_(**patch) owns the
                      cross-field rule (switching category DROPS a game the new
                      one doesn't know, but an explicitly patched bad game
@@ -149,10 +152,25 @@ src/cardstream/
                      _objects[0] carries Side front + Rotation rotation_ok (unless
                      known_attrs=False), the id type's Category pair, the game as
                      "Subcategory" and the writing system as "Alphabet", while the
-                     RECORD carries "set_code".
+                     RECORD carries "set_code". .payload(record) builds the POST
+                     body — the records envelope plus "price_stats": true,
+                     sent only where IdType.price_stats says the endpoint
+                     takes it, so the preference survives a category switch
+                     without ever reaching slab_id.
     ximilar.py       HTTP + parsing only: TierThresholds, distance_to_tier,
                      post_json (handles RequestException / non-2xx / malformed
-                     JSON), full_image_card_object, parse_best_match
+                     JSON), full_image_card_object, parse_best_match (which
+                     hands best_match.price_stats to prices.py)
+    prices.py        market price statistics, stdlib only: parse_price_stats
+                     (best_match.price_stats → one flat entry per stats_type,
+                     unusable ones skipped), select_price_stats (ungraded,
+                     graded; overall only as the fallback), format_number /
+                     money (two decimals, .00 dropped, $ prefixed — USD is
+                     assumed, the API names no currency) and price_summary,
+                     the one line the terminal prints and the page puts on a
+                     history row. overlay.js carries the JS twin, and
+                     tests/core/test_prices.py + tests/webui/price-stats.test.js
+                     run the same cases against both
     image_store.py   ImageStore — the --store-images folder: one file per PAID
                      call. --store-images-type picks the shape and the mode
                      lives HERE, so both call sites stay unconditional: `object`
@@ -260,6 +278,9 @@ src/cardstream/
                      --detection-expansion, what is PAID FOR in green
                      (crop_quad). Red not the confidence tier because --high is
                      green; the tier is on its own badge and every history row.
+                     With --price-stats the card panel gets a price block and
+                     each history row a price line (renderPriceStats /
+                     formatPriceStats — the JS twin of core/prices.py).
                      Plus history rows timing each card's stay, reappearances
                      resume the row unless --split-results. A row is BUILT on
                      identification but held out of the DOM until the card has
@@ -423,6 +444,7 @@ cardstream-web --detector rfdetr --detector-model model/detection/model.onnx \
 cardstream-web --game "Pokémon" --alphabet japanese --set-code M4   # record prefills
 cardstream-web --camera-width 3840 --width 1280 --debug   # more pixels to identify from
 cardstream-web --split-results                            # one history row per appearance
+cardstream-web --price-stats                              # USD market prices with every match; toggle live in ⚙
 
 cardstream-web --version                        # print the version and exit (also cardstream-client)
 
@@ -456,7 +478,12 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   is one field on `IdentifyOptions` (which owns normalization and the record);
   a settings knob is one descriptor in
   `webui/smart/settings-fields.js` plus one field on `SettingsPatch`. If a
-  change needs more places than that, the duplication has come back.
+  change needs more places than that, the duplication has come back. The one
+  legitimate exception is an option that also changes the RESPONSE
+  (`--price-stats`): that additionally touches `parse_best_match`, one
+  `Identification` field and each renderer — the card panel, the history
+  row, `print_identification` — which is the cost of a new output, not
+  duplication.
 - **The version is authored once, in `pyproject.toml`.** Everything else reads
   `cardstream.__version__` (importlib.metadata); both CLIs surface it via the
   shared `--version` flag (`add_version_arg` in `common.py`) and their startup
@@ -580,3 +607,9 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   detector as the fallback for an older publication) and skip it entirely when you
   pass a locator flag yourself — the two are mutually exclusive, so an
   unconditional one turned your own `--detector-model` into a "pick one" error.
+- **Price statistics are USD by assumption and free by assumption.** The
+  `price_stats` response names no currency, so `core/prices.py` `money()`
+  prefixes `$`; and Ximilar does not document whether the flag costs credits,
+  which is why `--price-stats` is opt-in. slab_id does not document the flag
+  at all, so `IdentifyOptions.payload` never sends it there — the switch stays
+  on in the dialog and applies again on the next category that takes it.

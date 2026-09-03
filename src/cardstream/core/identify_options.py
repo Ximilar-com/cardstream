@@ -1,14 +1,16 @@
 """What the id endpoint is asked — one value object, normalized once.
 
-The bundle ``(id_type, game, set_code, known_attrs, alphabet)`` used to be
-rebuilt by hand in several places (the identify client, the web client's
-settings endpoint and the CLI wiring), each re-implementing the same rules:
+The bundle ``(id_type, game, set_code, known_attrs, alphabet, price_stats)``
+used to be rebuilt by hand in several places (the identify client, the web
+client's settings endpoint and the CLI wiring), each re-implementing the same
+rules:
 what "not specified" means, and that switching category has to drop a game the
 new category doesn't know.
 
 Now they all construct or patch one frozen :class:`IdentifyOptions`, and the
-one wire form it has to survive — the Ximilar record built by :meth:`record` —
-is derived from it in a single place.
+two wire forms it has to survive — the Ximilar record built by :meth:`record`
+and the POST body built by :meth:`payload` — are derived from it in a single
+place.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ from cardstream.core.id_types import (
     resolve_id_type,
 )
 
-_FIELDS = ("id_type", "game", "set_code", "known_attrs", "alphabet")
+_FIELDS = ("id_type", "game", "set_code", "known_attrs", "alphabet", "price_stats")
 
 
 @dataclass(frozen=True)
@@ -45,6 +47,12 @@ class IdentifyOptions:
     # prefill switches the endpoint's own alphabet classifier off and it then
     # assumes latin, so a Japanese card matches its English print.
     alphabet: str | None = None
+    # Ask the endpoint for market price statistics with every match (USD:
+    # median, range, latest sale). Off by default — the extra data is not
+    # documented as free. Sent only to the id types that take the flag
+    # (IdType.price_stats); the preference itself survives a category
+    # switch, so tcg → slab → tcg does not silently turn it off.
+    price_stats: bool = False
 
     def __post_init__(self) -> None:
         id_type = resolve_id_type(self.id_type)
@@ -53,6 +61,7 @@ class IdentifyOptions:
         object.__setattr__(self, "set_code", normalize_set_code(self.set_code))
         object.__setattr__(self, "known_attrs", bool(self.known_attrs))
         object.__setattr__(self, "alphabet", normalize_alphabet(self.alphabet))
+        object.__setattr__(self, "price_stats", bool(self.price_stats))
 
     @property
     def subcategory(self) -> str | None:
@@ -84,6 +93,7 @@ class IdentifyOptions:
             set_code=patch.get("set_code", self.set_code),
             known_attrs=patch.get("known_attrs", self.known_attrs),
             alphabet=patch.get("alphabet", self.alphabet),
+            price_stats=patch.get("price_stats", self.price_stats),
         )
 
     def record(self, b64: str, objects: list[dict[str, Any]]) -> dict[str, Any]:
@@ -116,3 +126,14 @@ class IdentifyOptions:
         if self.set_code:
             record["set_code"] = self.set_code
         return record
+
+    def payload(self, record: dict[str, Any]) -> dict[str, Any]:
+        """THE POST body: the ``records`` envelope plus the top-level request
+        flags. ``price_stats`` is a preference; whether it goes on the wire is
+        the id type's call (``IdType.price_stats``), so an endpoint that does
+        not document the flag never receives it.
+        """
+        body: dict[str, Any] = {"records": [record]}
+        if self.price_stats and self.id_type.price_stats:
+            body["price_stats"] = True
+        return body

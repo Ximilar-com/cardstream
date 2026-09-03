@@ -249,6 +249,7 @@ def test_settings_endpoints_read_and_write_the_identify_client(
     assert s["category"] == "tcg"
     assert s["game"] == "Not Specified" and s["set_code"] == ""
     assert s["known_attrs"] is True
+    assert s["price_stats"] is False
     # Unset by default: the record carries no Alphabet at all.
     assert s["alphabet"] == "Not Specified" and s["alphabets"][0] == "Not Specified"
     assert "japanese" in s["alphabets"]
@@ -262,6 +263,9 @@ def test_settings_endpoints_read_and_write_the_identify_client(
 
     s = client.post("/settings", json={"known_attrs": False}).json()
     assert s["known_attrs"] is False and fake_identify.options.known_attrs is False
+
+    s = client.post("/settings", json={"price_stats": True}).json()
+    assert s["price_stats"] is True and fake_identify.options.price_stats is True
 
     # A game prefill kills the endpoint's alphabet detection, so the pair has
     # to be settable together in one Save.
@@ -427,7 +431,13 @@ def test_settings_patch_leaves_unsent_fields_alone(web_client):
     before = web_client.get("/settings").json()
     after = web_client.post("/settings", json={"camera_width": 1280}).json()
     assert after["camera_width"] == 1280
-    for key in ("result_threshold", "send_width", "category", "known_attrs"):
+    for key in (
+        "result_threshold",
+        "send_width",
+        "category",
+        "known_attrs",
+        "price_stats",
+    ):
         assert after[key] == before[key]
 
 

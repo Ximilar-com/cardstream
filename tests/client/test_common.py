@@ -14,6 +14,7 @@ from cardstream.client.common import (
     add_pipeline_args,
     add_source_args,
     build_pipeline,
+    print_identification,
     resolve_locator,
 )
 from cardstream.client.embedders import DEFAULT_EMBED_MODEL
@@ -370,3 +371,36 @@ def test_no_game_or_alphabet_prefill_by_default():
     assert args.game is None and args.alphabet is None
     opts = build_pipeline(_parse(["--api-key", "k"])).identify_client.options
     assert opts.game is None and opts.alphabet is None
+
+
+def test_price_stats_is_off_unless_asked_for():
+    assert _parse([]).price_stats is False
+    pipeline = build_pipeline(_parse(["--api-key", "k"]))
+    assert pipeline.identify_client.options.price_stats is False
+    assert "[price_stats]" not in pipeline.description
+    pipeline = build_pipeline(_parse(["--api-key", "k", "--price-stats"]))
+    assert pipeline.identify_client.options.price_stats is True
+    assert "[price_stats]" in pipeline.description
+
+
+def test_print_identification_adds_a_price_line_only_when_there_is_one(capsys):
+    ident = {
+        "full_name": "Charizard",
+        "set": "Base",
+        "card_number": "4",
+        "confidence_tier": "high",
+        "distance": 0.05,
+        "links": {"tcgplayer": "https://example.com"},
+    }
+    print_identification(ident)
+    out = capsys.readouterr().out
+    assert "[IDENTIFIED] Charizard" in out and "price:" not in out
+
+    # The same summary the page puts on the history row, in the links' gutter.
+    ident["price_stats"] = [
+        {"stats_type": "ungraded", "median": 4.5, "min": 3.0, "max": 9.5}
+    ]
+    print_identification(ident)
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert lines[1] == "             price: ungraded $4.50 (3\u20139.50)"
+    assert lines[2] == "             tcgplayer: https://example.com"

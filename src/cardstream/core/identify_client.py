@@ -1,7 +1,9 @@
 """One paid identification call, start to finish.
 
 ``upscale_small`` → base64 → build the record → POST → parse the best match,
-plus the auth headers and the ``{"records": [...]}`` envelope. The client's
+plus the auth headers; the ``{"records": [...]}`` envelope itself is
+:meth:`IdentifyOptions.payload`, so a request-level flag lives with the rest
+of the options. The client's
 ``DirectXimilarClient`` is a thin wrapper over this; where the options come
 from and what type comes back are parameters, so a second caller never has to
 copy the sequence.
@@ -108,7 +110,7 @@ class XimilarIdentifier:
             self._store.save_b64(record["_base64"])
         body = post_json(
             opts.id_type.url,
-            {"records": [record]},
+            opts.payload(record),
             self._headers,
             self._timeout,
             tag=opts.id_type.key,

@@ -48,6 +48,7 @@ class SettingsPatch(BaseModel):
         "set_code": "set_code",
         "known_attrs": "known_attrs",
         "alphabet": "alphabet",
+        "price_stats": "price_stats",
     }
     # Knobs the browser owns; the process only stores them so they survive a
     # page reload and are readable without an identify client.
@@ -60,6 +61,7 @@ class SettingsPatch(BaseModel):
     set_code: str | None = None
     known_attrs: bool | None = None
     alphabet: str | None = None
+    price_stats: bool | None = None
 
     # Analyzer + browser knobs, range-checked here.
     result_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -207,6 +209,7 @@ def add_settings_routes(
             "alphabet": opts.alphabet or NOT_SPECIFIED,
             "alphabets": [NOT_SPECIFIED, *ALPHABETS],
             "known_attrs": opts.known_attrs,
+            "price_stats": opts.price_stats,
             "result_threshold": live.result_threshold,
             "camera_width": live.camera_width,
             "send_width": live.send_width,

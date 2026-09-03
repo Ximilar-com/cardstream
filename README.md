@@ -149,6 +149,7 @@ Releases carry the wheel, sdist and `SHA256SUMS`, which `install.sh` verifies.
 ```bash
 cardstream-web --game "One Piece" --alphabet latin  # prefill: faster, more precise
 cardstream-web --set-code PBL                       # restrict matching to one set
+cardstream-web --price-stats                        # USD market prices with every match
 cardstream-web --camera-width 3840                  # more pixels to identify from
 cardstream-web --store-images crops/                # keep every crop you paid for
 cardstream-web --show-detection --debug             # see what was located, and why

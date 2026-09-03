@@ -23,6 +23,7 @@ export function panelEls() {
     series: document.getElementById("card-series"),
     year: document.getElementById("card-year"),
     links: document.getElementById("card-links"),
+    prices: document.getElementById("card-prices"),
     altWrap: document.getElementById("alt-wrap"),
     alternatives: document.getElementById("alternatives"),
     historyWrap: document.getElementById("history-wrap"),
@@ -40,6 +41,93 @@ function formatDuration(ms) {
   if (ms < 60000) return (ms / 1000).toFixed(1) + " s";
   const total = Math.round(ms / 1000);
   return `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, "0")}s`;
+}
+
+// --- market price statistics — the JS twin of core/prices.py -----------------
+// The process already flattened the endpoint's price_stats into one entry per
+// stats type; these decide which to show, in what order, and how a dollar
+// amount reads. Keep them line-for-line with the Python so the terminal and
+// the page never disagree.
+
+// Display order. "overall" is a fallback only: when a card has ungraded or
+// graded sales, the blend of the two says less than either on its own.
+const PREFERRED_TYPES = ["ungraded", "graded"];
+const FALLBACK_TYPE = "overall";
+
+const isAmount = (v) => typeof v === "number" && Number.isFinite(v);
+
+// Two decimals with a whole-dollar .00 dropped: 15, 24.99, 32.50.
+export function formatNumber(amount) {
+  const text = amount.toFixed(2);
+  return text.endsWith(".00") ? text.slice(0, -3) : text;
+}
+
+// The one place the currency is assumed (USD — the API names none).
+export function money(amount) {
+  return "$" + formatNumber(amount);
+}
+
+// The entries worth showing: ungraded, then graded; overall only when the
+// card has neither. Tolerates a missing or malformed list.
+export function selectPriceStats(entries) {
+  if (!Array.isArray(entries)) return [];
+  const byType = new Map();
+  for (const entry of entries) {
+    if (!entry || typeof entry.stats_type !== "string" || !entry.stats_type) continue;
+    if (!isAmount(entry.median)) continue;
+    if (!byType.has(entry.stats_type)) byType.set(entry.stats_type, entry);
+  }
+  const chosen = PREFERRED_TYPES.filter((t) => byType.has(t)).map((t) => byType.get(t));
+  if (chosen.length === 0 && byType.has(FALLBACK_TYPE)) chosen.push(byType.get(FALLBACK_TYPE));
+  return chosen;
+}
+
+// One line for a history row: "ungraded $24.99 (15–60) · graded $45.00 (30–80)".
+// The range is left out when either bound is missing; "" when nothing.
+export function formatPriceStats(entries) {
+  const parts = [];
+  for (const entry of selectPriceStats(entries)) {
+    let text = `${entry.stats_type} ${money(entry.median)}`;
+    if (isAmount(entry.min) && isAmount(entry.max)) {
+      text += ` (${formatNumber(entry.min)}–${formatNumber(entry.max)})`;
+    }
+    parts.push(text);
+  }
+  return parts.join(" · ");
+}
+
+// The card panel's price block: one row per shown stats type — the type,
+// the median, the range, and the latest sale with its date when the
+// endpoint had one. Hidden when there is nothing. Built with createElement
+// only (no innerHTML) so the stdlib tests can drive it with a DOM stub.
+export function renderPriceStats(el, entries) {
+  el.replaceChildren();
+  const shown = selectPriceStats(entries);
+  for (const entry of shown) {
+    const li = document.createElement("li");
+    const type = document.createElement("span");
+    type.className = "p-type";
+    type.textContent = entry.stats_type;
+    const median = document.createElement("span");
+    median.className = "p-median";
+    median.textContent = money(entry.median);
+    li.append(type, median);
+    if (isAmount(entry.min) && isAmount(entry.max)) {
+      const range = document.createElement("span");
+      range.className = "p-range";
+      range.textContent = `(${formatNumber(entry.min)}–${formatNumber(entry.max)})`;
+      li.append(range);
+    }
+    if (isAmount(entry.latest)) {
+      const latest = document.createElement("span");
+      latest.className = "p-latest";
+      latest.textContent = `latest ${money(entry.latest)}` +
+        (entry.latest_date ? ` · ${entry.latest_date}` : "");
+      li.append(latest);
+    }
+    el.append(li);
+  }
+  el.hidden = shown.length === 0;
 }
 
 // Renders results: the state badge, the card panel, and the bounding-box
@@ -150,6 +238,8 @@ export class Overlay {
       els.links.appendChild(a);
     }
 
+    if (els.prices) renderPriceStats(els.prices, id.price_stats);
+
     const alts = id.alternatives || [];
     els.altWrap.hidden = alts.length === 0;
     els.alternatives.innerHTML = "";
@@ -201,6 +291,14 @@ export class Overlay {
     dur.className = "h-dur live";
     dur.title = "time the card stayed in frame";
     li.append(time, tier, name, dur, meta);
+    // Only with --price-stats, and only when the endpoint had sales.
+    const priceText = formatPriceStats(id.price_stats);
+    if (priceText) {
+      const price = document.createElement("span");
+      price.className = "h-price";
+      price.textContent = priceText;
+      li.append(price);
+    }
     // The row is built now but held OUT of the DOM until the card has been on
     // stream for --min-card-time: a card glimpsed mid-swap should never appear
     // at all, rather than flash into the list and be taken back out.

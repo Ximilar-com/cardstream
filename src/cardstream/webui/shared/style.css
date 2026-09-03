@@ -155,6 +155,18 @@ dd { margin: 0; font-size: 0.85rem; }
   border-radius: 6px;
   padding: 0.25rem 0.55rem;
 }
+/* --- market price statistics (only with --price-stats) --- */
+.prices { list-style: none; margin: 0.9rem 0 0; padding: 0; display: grid; gap: 0.25rem; font-size: 0.85rem; }
+.prices li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-variant-numeric: tabular-nums;
+}
+.p-type { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; }
+.p-median { font-weight: 600; }
+.p-range, .p-latest { color: var(--muted); font-size: 0.75rem; }
 details { margin-top: 1rem; color: var(--muted); font-size: 0.85rem; }
 details ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 
@@ -190,6 +202,8 @@ details ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
   white-space: nowrap;
 }
 .h-dur.live { color: var(--accent); }
+/* The price summary, a line under the meta — only with --price-stats. */
+.h-price { grid-column: 3 / -1; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 
 /* Scoped to the footer: it styles ONE button (#toggle). Left bare, every
    other button on the page had to undo it. */

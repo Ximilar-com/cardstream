@@ -81,10 +81,21 @@ def test_every_id_type_is_self_consistent():
         assert t.label and t.url.endswith(f"/{key}_id")
         assert t.category_attrs.get("Top Category")
         assert t.game_choices[0] == NOT_SPECIFIED
+        assert isinstance(t.price_stats, bool)
         # Every offered game round-trips through its own normalizer.
         for display in t.subcategories:
             assert t.normalize_game(display) == display
             assert t.subcategory_for(display) == t.subcategories[display]
+
+
+def test_price_stats_is_documented_for_three_of_the_four_endpoints():
+    # docs.ximilar.com/collectibles/recognition: tcg_id, sport_id and comics_id
+    # take the top-level flag; slab_id has no prices to aggregate.
+    assert {k for k, t in ID_TYPES.items() if t.price_stats} == {
+        "tcg",
+        "sport",
+        "comics",
+    }
 
 
 def test_registry_is_frozen():

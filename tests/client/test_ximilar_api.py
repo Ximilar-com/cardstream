@@ -10,7 +10,7 @@ from cardstream.core.identify_options import IdentifyOptions
 from cardstream.core.ximilar import distance_to_tier, parse_best_match
 
 
-def _response(distance=0.1, wrap_in_response=False, in_objects=True):
+def _response(distance=0.1, wrap_in_response=False, in_objects=True, price_stats=None):
     best = {
         "name": "Charizard",
         "full_name": "Charizard (Base Set 4/102)",
@@ -22,6 +22,8 @@ def _response(distance=0.1, wrap_in_response=False, in_objects=True):
         "subcategory": "Pokemon",
         "links": {"tcgplayer": "https://example.com"},
     }
+    if price_stats is not None:
+        best["price_stats"] = price_stats
     ident = {
         "best_match": best,
         "distances": [distance],
@@ -47,6 +49,34 @@ def test_parse_flattens_best_match():
     assert ident["confidence_tier"] == "high"
     assert ident["links"] == {"tcgplayer": "https://example.com"}
     assert ident["alternatives"][0]["full_name"] == "Charizard (alt)"
+
+
+def test_parse_flattens_price_stats_when_present():
+    raw = [
+        {
+            "stats_type": "ungraded",
+            "interval": "overall",
+            "value": {"min": 3, "max": 9.5, "median": 4.5, "trend": {}},
+        }
+    ]
+    ident = parse_best_match(_response(price_stats=raw)).to_dict()
+    assert ident["price_stats"] == [
+        {
+            "stats_type": "ungraded",
+            "interval": "overall",
+            "min": 3.0,
+            "max": 9.5,
+            "mean": None,
+            "median": 4.5,
+            "q1": None,
+            "q3": None,
+            "latest": None,
+            "oldest": None,
+            "latest_date": None,
+            "oldest_date": None,
+        }
+    ]
+    assert parse_best_match(_response()).to_dict()["price_stats"] == []
 
 
 def test_parse_handles_all_three_shapes():
@@ -138,6 +168,36 @@ def test_identify_posts_b64_and_flattens(monkeypatch):
     assert "Alphabet" not in obj
     assert "Subcategory" not in obj  # no --game -> no prefill
     assert "set_code" not in record  # no --set-code -> no prefill
+    assert "price_stats" not in captured["json"]  # no --price-stats -> no flag
+
+
+def test_price_stats_rides_on_the_body_only_when_asked_and_supported(monkeypatch):
+    from cardstream.core import ximilar as core_ximilar
+
+    captured = {}
+
+    def fake_post(url, json, headers, timeout):
+        captured.update(url=url, json=json)
+        return _FakeResponse(_response())
+
+    monkeypatch.setattr(core_ximilar.requests, "post", fake_post)
+    client = DirectXimilarClient("key", IdentifyOptions("tcg"))
+
+    # The settings dialog's rebind: the next call carries the flag.
+    client.options = client.options.with_(price_stats=True)
+    client.identify(_crop())
+    assert captured["json"]["price_stats"] is True
+    assert set(captured["json"]) == {
+        "records",
+        "price_stats",
+    }  # top level, not the record
+
+    # slab_id documents no price_stats: the preference stays, the flag stays home.
+    client.options = client.options.with_(id_type="slab")
+    client.identify(_crop())
+    assert captured["url"].endswith("/slab_id")
+    assert "price_stats" not in captured["json"]
+    assert client.options.price_stats is True
 
 
 def test_identify_sends_game_as_subcategory(monkeypatch):

@@ -20,6 +20,7 @@ def test_identification_to_dict_serializes_enum():
     assert d["confidence_tier"] == "high"  # enum -> value
     assert d["full_name"] == "Charizard"
     assert d["links"] == {"ximilar": "https://example.com/card"}
+    assert d["price_stats"] == []  # present, empty: the page never branches on absence
 
 
 def test_analysis_result_empty_to_dict():

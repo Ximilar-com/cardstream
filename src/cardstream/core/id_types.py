@@ -3,7 +3,8 @@
 Everything that varies with the id type (``tcg`` / ``sport`` / ``slab`` /
 ``comics``) lives on one :class:`IdType` and is looked up through
 :data:`ID_TYPES`: the endpoint URL, the dropdown label, the Category pair the
-endpoint implies, and the games/sports it accepts as ``Subcategory``.
+endpoint implies, the games/sports it accepts as ``Subcategory``, and
+whether it takes the top-level ``price_stats`` request flag.
 
 Before this module those four facts lived in four dicts across two files, all
 keyed by the same strings, and adding a category meant editing every one of
@@ -65,6 +66,11 @@ class IdType:
     # the valid values depend on the endpoint. Empty for the types that take
     # none.
     subcategories: Mapping[str, str]
+    # Whether the endpoint honours the top-level ``price_stats`` request flag
+    # (market price statistics on the best match). Documented for tcg_id,
+    # sport_id and comics_id; slab_id has no prices to aggregate.
+    # IdentifyOptions.payload() sends the flag only where this is True.
+    price_stats: bool
 
     # Tolerant index: display name OR API value, any case -> display name.
     _lookup: Mapping[str, str] = field(init=False, repr=False, compare=False)
@@ -131,6 +137,7 @@ ID_TYPES: Mapping[str, IdType] = MappingProxyType(
                     "Magic The Gathering": "Magic The Gathering",
                     "One Piece": "One Piece",
                 },
+                price_stats=True,
             ),
             IdType(
                 key="sport",
@@ -145,6 +152,7 @@ ID_TYPES: Mapping[str, IdType] = MappingProxyType(
                     "Soccer": "Soccer",
                     "MMA": "MMA",
                 },
+                price_stats=True,
             ),
             IdType(
                 key="slab",
@@ -152,6 +160,7 @@ ID_TYPES: Mapping[str, IdType] = MappingProxyType(
                 url="https://api.ximilar.com/collectibles/v2/slab_id",
                 category_attrs={"Top Category": "Slab Label"},
                 subcategories={},
+                price_stats=False,
             ),
             IdType(
                 key="comics",
@@ -159,6 +168,7 @@ ID_TYPES: Mapping[str, IdType] = MappingProxyType(
                 url="https://api.ximilar.com/collectibles/v2/comics_id",
                 category_attrs={"Top Category": "Comics"},
                 subcategories={},
+                price_stats=True,
             ),
         )
     }

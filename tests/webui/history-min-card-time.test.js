@@ -7,44 +7,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-// --- the smallest DOM that Overlay._addHistory touches -----------------------
+import { FakeEl, installFakeDom } from "./_fake-dom.js";
 
-class FakeEl {
-  constructor(tag = "div") {
-    this.tag = tag;
-    this.children = [];
-    this.textContent = "";
-    this.className = "";
-    this.title = "";
-    this.hidden = true;
-    this.parent = null;
-    this.classList = { add() {}, remove() {} };
-  }
-  append(...kids) {
-    for (const k of kids) {
-      k.parent = this;
-      this.children.push(k);
-    }
-  }
-  prepend(kid) {
-    kid.parent = this;
-    this.children.unshift(kid);
-  }
-  remove() {
-    if (!this.parent) return;
-    this.parent.children = this.parent.children.filter((c) => c !== this);
-    this.parent = null;
-  }
-  get lastChild() {
-    return this.children[this.children.length - 1];
-  }
-}
-
-globalThis.document = { createElement: (tag) => new FakeEl(tag) };
-// The constructor starts a 500ms duration tick; a live timer would keep the
-// test runner alive. Ticking is driven explicitly below instead.
-globalThis.setInterval = () => 0;
-
+installFakeDom();
 const { Overlay } = await import("../../src/cardstream/webui/shared/overlay.js");
 
 function makeOverlay(minCardTimeMs) {

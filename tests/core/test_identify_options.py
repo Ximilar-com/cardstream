@@ -36,6 +36,7 @@ def test_defaults_send_nothing_but_the_type():
     opts = IdentifyOptions()
     assert opts.id_type.key == "tcg" and opts.known_attrs is True
     assert opts.game is None and opts.set_code is None and opts.alphabet is None
+    assert opts.price_stats is False  # the extra data is not documented as free
 
 
 @pytest.mark.parametrize("value", [None, "", "   ", NOT_SPECIFIED])
@@ -84,6 +85,14 @@ def test_patch_distinguishes_absent_from_cleared():
 def test_patch_rejects_unknown_options():
     with pytest.raises(ValueError, match="unknown option"):
         IdentifyOptions().with_(colour="red")
+
+
+def test_price_stats_round_trips_through_with_and_coerces():
+    assert IdentifyOptions().with_(price_stats=True).price_stats is True
+    assert IdentifyOptions(price_stats=1).price_stats is True
+    assert (
+        IdentifyOptions(price_stats=True).with_(price_stats=False).price_stats is False
+    )
 
 
 # ------------------------------------------------------------------ wire form
@@ -135,6 +144,21 @@ def test_record_carries_the_alphabet_when_set():
         "b64", [_card_object()]
     )["_objects"]
     assert obj["Alphabet"] == "japanese"
+
+
+def test_price_stats_is_a_preference_the_id_type_gates():
+    """The flag rides on the POST body, not the record — and only where the
+    endpoint documents it. slab_id does not, so the preference survives a
+    category switch while the wire stays clean."""
+    record = {"_base64": "b64", "_objects": []}
+    assert IdentifyOptions().payload(record) == {"records": [record]}
+    on = IdentifyOptions("tcg", price_stats=True)
+    assert on.payload(record) == {"records": [record], "price_stats": True}
+    for key in ("sport", "comics"):
+        assert IdentifyOptions(key, price_stats=True).payload(record)["price_stats"]
+    slab = on.with_(id_type="slab")
+    assert slab.price_stats is True and "price_stats" not in slab.payload(record)
+    assert slab.with_(id_type="tcg").payload(record)["price_stats"] is True
 
 
 def test_record_tolerates_no_objects():
