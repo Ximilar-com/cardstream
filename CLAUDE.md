@@ -290,7 +290,16 @@ src/cardstream/
                      glimpsed mid-swap never appears, rather than flashing in
                      and being removed),
                      ws.js, capture.js (width 0 = send as captured),
-                     style.css, logo.svg (the wordmark, copied by hand from web/)
+                     theme.js (the ☀/☾ header button: the stored choice in
+                     localStorage wins, else the page follows the system
+                     setting live; index.html applies the same rule inline
+                     in <head> so the first paint is already right, and the
+                     test pins the two to one key),
+                     style.css (dark is the base palette; the light one is
+                     :root[data-theme="light"] overriding the SAME tokens —
+                     no rule elsewhere names a colour, and overlay.js
+                     caches cssVar() per theme so the canvas follows),
+                     logo.svg (the wordmark, copied by hand from web/)
     smart/           the page: sends frames at CAPTURE resolution (q0.85)
                      and maps bboxes with the analysed dims the process reports;
                      /mode switch + relayed-frame viewer, debug log panel, header

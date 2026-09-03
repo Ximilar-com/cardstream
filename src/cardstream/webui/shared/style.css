@@ -1,4 +1,9 @@
+/* Dark is the base palette; :root[data-theme="light"] below overrides the
+   same tokens and nothing else. theme.js sets the attribute (stored choice,
+   else the system's), and index.html applies it inline before first paint.
+   No rule anywhere else may name a colour: the two blocks ARE the themes. */
 :root {
+  color-scheme: dark;
   --bg: #0e1116;
   --panel: #161b22;
   --line: #2a313c;
@@ -15,6 +20,23 @@
   --on-accent: #fff;         /* text on --accent / --danger */
   --danger: #da3633;         /* the Stop button */
   --error: #f85149;          /* inline error text */
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fa;
+  --panel: #ffffff;
+  --line: #d0d7de;
+  --text: #1f2328;
+  --muted: #656d76;
+  --high: #1a7f37;
+  --medium: #9a6700;
+  --low: #656d76;
+  --accent: #0969da;
+  --control-bg: #eef1f4;
+  --stage-bg: #dfe3e8;
+  --on-accent: #fff;
+  --danger: #cf222e;
+  --error: #d1242f;
 }
 
 * { box-sizing: border-box; }

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A light/dark theme switch (☀/☾, top right of the web client). Follows the
+  system setting until you pick; the pick is remembered by the browser.
 - `--price-stats` (off unless passed; also a switch in the ⚙ dialog): every
   identification asks the id endpoint for aggregated USD market prices and
   shows them on the card panel, in each history row and on the terminal.

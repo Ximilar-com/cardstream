@@ -136,14 +136,16 @@ export function renderPriceStats(el, entries) {
 // `getMedia()` is page-specific: it returns { el, fw, fh } — the element
 // currently displaying frames and the pixel size of the ANALYSED frame,
 // which is the coordinate space bboxes arrive in.
-/** A CSS custom property's value, cached — style.css is the palette's only copy. */
+/** A CSS custom property's value, cached per theme — style.css is the
+    palette's only copy, and the ☀/☾ button swaps it under us. */
 const _cssVars = new Map();
 function cssVar(name) {
-  if (!_cssVars.has(name)) {
+  const key = `${document.documentElement?.dataset?.theme || ""}:${name}`;
+  if (!_cssVars.has(key)) {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name);
-    _cssVars.set(name, value.trim());
+    _cssVars.set(key, value.trim());
   }
-  return _cssVars.get(name);
+  return _cssVars.get(key);
 }
 
 export class Overlay {

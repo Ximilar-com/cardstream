@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Smart Card Client — Local Identification</title>
   <link rel="icon" type="image/svg+xml" href="../shared/logo.svg" />
+  <script>
+    // Theme before first paint: the stored choice, else the system's. The
+    // same rule lives in ../shared/theme.js, which owns the button; the key
+    // here is pinned to THEME_KEY by tests/webui/theme.test.js.
+    try {
+      var theme = localStorage.getItem("cardstream-theme");
+      if (theme !== "light" && theme !== "dark") {
+        theme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      }
+      document.documentElement.dataset.theme = theme;
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="../shared/style.css" />
   <link rel="stylesheet" href="smart.css" />
 </head>
@@ -22,6 +34,7 @@
       <span id="cam-res" class="badge" title="resolution the camera actually delivers (getUserMedia asks for an ideal 1280×720)">cam —</span>
       <span id="send-res" class="badge" title="resolution the local process analyses at (--width); identification crops are cut from the full-resolution frame">analysed —</span>
       <span id="calls" class="badge" title="Ximilar identification calls this session">0 calls</span>
+      <button id="theme-toggle" class="icon-btn theme-toggle" type="button" title="Switch theme" aria-label="Switch theme">☀</button>
     </div>
   </header>
 

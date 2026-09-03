@@ -45,6 +45,8 @@
   line-height: 1;
 }
 .icon-btn:hover { color: var(--text); border-color: var(--accent); }
+/* The ☀/☾ theme button, in the header's badge row: round like a badge. */
+.theme-toggle { border-radius: 999px; padding: 0.2rem 0.55rem; font-size: 0.8rem; }
 
 #settings-dialog {
   width: min(420px, 92vw);

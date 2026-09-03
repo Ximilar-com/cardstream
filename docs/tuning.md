@@ -155,6 +155,7 @@ The smart page keeps the Game dropdown at the top of the right panel with a
 | Market price statistics | On: send the top-level `price_stats` flag; the card panel and every history row show the USD median, range and latest sale (tcg / sport / comics only) |
 | Result threshold | `--result-threshold` retuned live on every running analyzer |
 | Send rate, Show detection box | Page-local: capture fps and the bbox overlay |
+| ☀ / ☾ (header, top right) | Page-local: light or dark theme. Follows the system setting until you pick; the pick is remembered by the browser |
 
 Everything but the last row round-trips through `GET`/`POST /settings` on the
 local process, so it applies to the next identify call without a restart.

@@ -18,6 +18,9 @@ import { ReconnectingSocket } from "../shared/ws.js";
 import { CameraCapture } from "../shared/capture.js";
 import { Session } from "../shared/session.js";
 import { initSettings } from "./settings.js";
+import { initTheme } from "../shared/theme.js";
+
+initTheme(document.getElementById("theme-toggle"));
 
 const els = panelEls();
 els.remote = document.getElementById("remote");
