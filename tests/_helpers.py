@@ -19,6 +19,7 @@ from cardstream.core.models import (
     DetectionResult,
     Identification,
 )
+from cardstream.core.ximilar_session import Outcome, UploadReply
 
 # --- Synthetic frames / crops ----------------------------------------------
 
@@ -134,6 +135,7 @@ def make_smart_analyzer(
     on_log=None,
     tracker=None,
     store=None,
+    recorder=None,
     **cfg_overrides,
 ):
     """A SmartAnalyzer with the deterministic test config (identify inline).
@@ -153,6 +155,7 @@ def make_smart_analyzer(
         run_async=False,  # identify inline -> deterministic snapshots
         tracker=tracker,
         store=store,
+        recorder=recorder,
     )
 
 
@@ -300,3 +303,48 @@ def start_fake_ws_source(jpeg: bytes, prelude: tuple = ()):
         thread.join(timeout=5)
 
     return f"ws://127.0.0.1:{holder['port']}", stop
+
+
+# --- Ximilar stream session --------------------------------------------------
+
+SESSION_ID = "0b7c9a52-6a1e-4f3e-9d6b-2f4f5c1e8a10"
+
+
+class FakeSessionApi:
+    """Stands in for ``core.ximilar_session.SessionApi`` — no network.
+
+    Records every call. ``replies`` scripts the upload outcomes in order;
+    once it runs out, every upload is stored.
+    """
+
+    base_url = "https://api.test/cardstream/v2"
+
+    def __init__(self, replies=(), status: str = "live") -> None:
+        self.replies = list(replies)
+        self.status = status
+        self.created: list[dict] = []
+        self.fetched: list[str] = []
+        self.uploads: list[list[dict]] = []
+        self.closed: list[str] = []
+        self.close_failure: str | None = None
+
+    def url(self, *parts: str) -> str:
+        return "/".join([self.base_url, *parts]) + "/"
+
+    def create(self, payload: dict) -> dict:
+        self.created.append(payload)
+        return {"id": SESSION_ID, "name": payload["name"], "status": "live"}
+
+    def get(self, session_id: str) -> dict:
+        self.fetched.append(session_id)
+        return {"id": session_id, "name": "Friday show", "status": self.status}
+
+    def upload(self, session_id: str, items: list[dict]) -> UploadReply:
+        self.uploads.append(list(items))
+        if self.replies:
+            return self.replies.pop(0)
+        return UploadReply(Outcome.STORED, created=len(items))
+
+    def close(self, session_id: str) -> str | None:
+        self.closed.append(session_id)
+        return self.close_failure

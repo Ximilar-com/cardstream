@@ -82,7 +82,10 @@ it costs nothing more. Swap cards and it costs exactly one call.
 | Identify lookup | Ximilar `collectibles/v2/*_id` | **paid, once per distinct card** |
 
 Everything above the last row is free and local. Nothing but that one crop
-leaves the process — there is no service in the path.
+leaves the process — there is no service in the path. The one opt-in exception
+is `--ximilar-stream`, which also saves each identification (text, never
+images) to a session on the Ximilar platform — see
+**[Saving a show](docs/sessions.md)**.
 
 ## Model weights
 
@@ -154,6 +157,7 @@ cardstream-web --camera-width 3840                  # more pixels to identify fr
 cardstream-web --store-images crops/                # keep every crop you paid for
 cardstream-web --show-detection --debug             # see what was located, and why
 cardstream-web --gate phash                         # zero-ML identity gate
+cardstream-web --ximilar-stream NEW                 # save the show to review later
 cardstream-client --source card.jpg --loop          # a still image, on repeat
 ```
 
@@ -173,6 +177,7 @@ flags at all and runs the same pipeline `make dev` spells out flag by flag.
 | **[Tuning](docs/tuning.md)** | call economics, detection filters, resolution, the settings dialog |
 | **[Locating the card](docs/locators.md)** | detection vs segmentation, expansion, visual tracking |
 | **[Frame sources](docs/sources.md)** | webcams, files, RTSP/RTMP/SRT, `--listen` |
+| **[Saving a show](docs/sessions.md)** | `--ximilar-stream`: a reviewable record of every identification on the Ximilar platform |
 | **[Model weights](model/README.md)** | the model zoo and each export's contract |
 | **[Architecture](CLAUDE.md)** | the internals map, for contributors |
 

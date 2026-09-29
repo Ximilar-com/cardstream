@@ -126,6 +126,7 @@ def main() -> None:
         config=pipeline.config,
         on_result=print_identification,
         store=pipeline.store,
+        recorder=pipeline.recorder,
     )
 
     print_state = StatePrinter()
@@ -162,6 +163,8 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        # Drain and close the --ximilar-stream session before saying done.
+        pipeline.close()
         print("\n[client] done")
 
 

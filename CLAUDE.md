@@ -39,7 +39,11 @@ The state machine lives ONCE in `core/engine.py` (`DecisionCore` + `CallGuard`
 (`cardstream.client`) runs the core synchronously (identify in a background
 thread) — RF-DETR/RT-DETRv2 detection, MobileNetV2-embedding (or pHash) gate —
 and only one JPEG crop per distinct card leaves the machine, straight to
-Ximilar. **Everything runs locally; there is no service in the path.**
+Ximilar. **Everything runs locally; there is no service in the path.** The one
+opt-in exception is `--ximilar-stream`: each KEPT identification (text only)
+is also queued for a session on the Ximilar platform, so the show can be
+reviewed afterwards — off the frame loop and off the identify path's critical
+section, see `core/ximilar_session.py`.
 
 ## Architecture
 
@@ -171,6 +175,24 @@ src/cardstream/
                      history row. overlay.js carries the JS twin, and
                      tests/core/test_prices.py + tests/webui/price-stats.test.js
                      run the same cases against both
+    ximilar_session.py  --ximilar-stream, requests only: session_item (the
+                     analyzer's identification dict -> the upload item the
+                     session API validates: set -> set_name,
+                     confidence_tier -> confidence, text clipped to the API's
+                     column limits, links reduced to text — ONE malformed field
+                     would 400 the whole batch, so it is made safe here, once),
+                     SessionApi (create / get / upload / close against
+                     /cardstream/v2/, auth_headers shared with the identify
+                     call; every upload reply sorted into an Outcome: STORED,
+                     RETRY for network/429/5xx, REJECTED for a bad batch,
+                     STOPPED for 401/403/404/409), open_session (NEW creates,
+                     an id resumes a LIVE session only) and SessionRecorder —
+                     record() only queues (never the network, never raises, so
+                     the identify thread is not held up), a daemon thread
+                     flushes batches of <=500 with backoff, every item carries
+                     a random event_id the API dedupes on, so a lost reply is
+                     resent safely; close() drains with a timeout and closes
+                     the session unless --ximilar-stream-keep-open
     image_store.py   ImageStore — the --store-images folder: one file per PAID
                      call. --store-images-type picks the shape and the mode
                      lives HERE, so both call sites stay unconditional: `object`
@@ -231,11 +253,15 @@ src/cardstream/
                      that fails cheapest first. resolve_locator() owns the
                      detector-or-segmentor rule and is the ONE place the
                      shipped segmentor default is applied; bounded_float()
-                     is the shared numeric-flag validator.
+                     is the shared numeric-flag validator. _stream_session()
+                     opens the --ximilar-stream session LAST (after the
+                     models) into Pipeline.recorder, and Pipeline.close() is
+                     the one end-of-run cleanup both entrypoints call.
                      Flags are declared in argparse GROUPS (frame source /
                      identification / detection / identity gate and call
                      policy / motion gate and detection throttle / tracking
-                     / diagnostics) — banner.py and --help both read that
+                     / diagnostics / ximilar stream session) — banner.py and
+                     --help both read that
                      grouping back, so a new flag lands in a section without
                      a second list to update. Each entrypoint exposes
                      build_parser() so the banner, the tests and the docs
@@ -603,6 +629,15 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   defaults there) and do not expose it to a LAN.
 - **`--listen` / `--ffmpeg` need the system ffmpeg binary** (brew install
   ffmpeg); plain pulls work with pip-only installs.
+- **`--ximilar-stream` records identifications, not appearances.** A session
+  gets one record per KEPT paid match, stamped when the call fired; how long
+  the card stayed on stream lives only in the page's history row. Its log
+  lines go to stdout (the recorder's `log` defaults to print), not to the
+  page's debug panel, and camera mode's per-connection analyzers all record
+  into the one session the process opened. The session is opened LAST in
+  build_pipeline so a run that dies on a model path leaves no empty session
+  behind; a closed session cannot be resumed, hence
+  `--ximilar-stream-keep-open` for a planned restart.
 - **`model/` is gitignored except its README** (weights + training artifacts,
   ~250 MB for the segmentor alone). The subfolders only exist once you put
   weights in them, and `scripts/install.sh` + the Docker image do NOT use this

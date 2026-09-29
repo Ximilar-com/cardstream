@@ -250,6 +250,7 @@ def main() -> None:
             on_result=on_result,
             on_log=on_log,
             store=pipeline.store,
+            recorder=pipeline.recorder,
         )
 
     url = f"http://{args.host}:{args.port}"
@@ -261,24 +262,29 @@ def main() -> None:
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, [url]).start()
 
-    uvicorn.run(
-        create_web_app(
-            make_analyzer,
-            debug=args.debug,
-            source=source,
-            identify_client=pipeline.identify_client,
-            show_detection=args.show_detection,
-            result_threshold=pipeline.config.result_threshold,
-            split_results=args.split_results,
-            min_card_time=args.min_card_time,
-            analysis_width=pipeline.config.analysis_width,
-            camera_width=args.camera_width,
-            send_width=args.send_width,
-        ),
-        host=args.host,
-        port=args.port,
-        log_level="warning",
-    )
+    try:
+        uvicorn.run(
+            create_web_app(
+                make_analyzer,
+                debug=args.debug,
+                source=source,
+                identify_client=pipeline.identify_client,
+                show_detection=args.show_detection,
+                result_threshold=pipeline.config.result_threshold,
+                split_results=args.split_results,
+                min_card_time=args.min_card_time,
+                analysis_width=pipeline.config.analysis_width,
+                camera_width=args.camera_width,
+                send_width=args.send_width,
+            ),
+            host=args.host,
+            port=args.port,
+            log_level="warning",
+        )
+    finally:
+        # uvicorn returns once Ctrl-C has shut the server down; the session
+        # still holds whatever the last seconds identified.
+        pipeline.close()
 
 
 if __name__ == "__main__":

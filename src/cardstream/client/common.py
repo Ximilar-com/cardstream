@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import os
 from dataclasses import dataclass
+from datetime import datetime
 
 from cardstream import __version__
 from cardstream.client.analyzer import AnalyzerConfig
@@ -32,6 +33,17 @@ from cardstream.core.identify_options import IdentifyOptions
 from cardstream.core.image_store import FRAME, OBJECT, STORE_TYPES, ImageStore
 from cardstream.core.prices import price_summary
 from cardstream.core.tracking import make_tracker
+from cardstream.core.ximilar_session import (
+    DEFAULT_PLATFORM,
+    DEFAULT_SESSION_URL,
+    NEW_SESSION,
+    PLATFORMS,
+    SessionApi,
+    SessionError,
+    SessionRecorder,
+    open_session,
+    parse_session_spec,
+)
 
 # Tuning defaults shown in --help and used when a flag is omitted.
 _DEFAULTS = AnalyzerConfig()
@@ -57,6 +69,14 @@ def bounded_float(lo: float, hi: float | None, hint: str, *, inclusive: bool = T
         return number
 
     return parse
+
+
+def _session_spec(value: str) -> str:
+    """argparse ``type=`` for --ximilar-stream: NEW or a session id."""
+    try:
+        return parse_session_spec(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
 
 
 # A fraction OF THE FRAME. Half-open at the top: 1.0 would reject every box,
@@ -86,6 +106,14 @@ class Pipeline:
     # analyzer keeps the frames — which of the two actually writes is the
     # store's own --store-images-type.
     store: ImageStore | None = None
+    # --ximilar-stream, or None: the session every identification is also
+    # uploaded to. Entrypoints call close() on exit to drain and close it.
+    recorder: SessionRecorder | None = None
+
+    def close(self) -> None:
+        """End-of-run cleanup both entrypoints share; safe to call twice."""
+        if self.recorder is not None:
+            self.recorder.close()
 
 
 def add_version_arg(ap: argparse.ArgumentParser) -> None:
@@ -458,6 +486,52 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         "--debug", action="store_true", help="log gate similarities and state flow"
     )
 
+    session = ap.add_argument_group("ximilar stream session")
+    session.add_argument(
+        "--ximilar-stream",
+        "--ximilar_stream",
+        dest="ximilar_stream",
+        type=_session_spec,
+        default=None,
+        metavar="NEW|ID",
+        help=f"also save every identification to a session on the Ximilar "
+        f"platform, to review the show afterwards: {NEW_SESSION} starts one "
+        "(its id is printed), a session id resumes a live one. Uses the same "
+        "API key; the account needs the cardstream service. Off by default — "
+        "then the identify call is the only thing that leaves this machine",
+    )
+    session.add_argument(
+        "--ximilar-stream-name",
+        dest="ximilar_stream_name",
+        default=None,
+        metavar="NAME",
+        help="name of a NEW session (default: the game or card type, and the "
+        "start time)",
+    )
+    session.add_argument(
+        "--ximilar-stream-platform",
+        dest="ximilar_stream_platform",
+        default=DEFAULT_PLATFORM,
+        choices=list(PLATFORMS),
+        help="where a NEW session is streamed; the review groups shows by it",
+    )
+    session.add_argument(
+        "--ximilar-stream-keep-open",
+        dest="ximilar_stream_keep_open",
+        action="store_true",
+        help="leave the session live on exit so a restarted client can resume "
+        "it with --ximilar-stream ID; by default a clean exit uploads what is "
+        "left and closes the session",
+    )
+    session.add_argument(
+        "--ximilar-stream-url",
+        dest="ximilar_stream_url",
+        default=DEFAULT_SESSION_URL,
+        metavar="URL",
+        help="base URL of the session API; change it only to point at a "
+        "development backend",
+    )
+
 
 def _image_store(args) -> ImageStore | None:
     """The --store-images folder, or None. Constructed BEFORE any model loads
@@ -576,6 +650,71 @@ def _analyzer_config(args) -> AnalyzerConfig:
     )
 
 
+def _check_session_flags(args) -> None:
+    """Refuse session flags that would silently do nothing. Cheap, so it runs
+    before any model loads."""
+    spec = getattr(args, "ximilar_stream", None)
+    extras = {
+        "--ximilar-stream-name": getattr(args, "ximilar_stream_name", None),
+        "--ximilar-stream-keep-open": getattr(args, "ximilar_stream_keep_open", False),
+    }
+    if getattr(args, "ximilar_stream_platform", DEFAULT_PLATFORM) != DEFAULT_PLATFORM:
+        extras["--ximilar-stream-platform"] = args.ximilar_stream_platform
+    if getattr(args, "ximilar_stream_url", DEFAULT_SESSION_URL) != DEFAULT_SESSION_URL:
+        extras["--ximilar-stream-url"] = args.ximilar_stream_url
+    given = [flag for flag, value in extras.items() if value]
+    if spec is None and given:
+        raise ValueError(f"{given[0]} needs --ximilar-stream NEW|ID")
+    if spec not in (None, NEW_SESSION):
+        for flag in ("--ximilar-stream-name", "--ximilar-stream-platform"):
+            if flag in given:
+                raise ValueError(
+                    f"{flag} only describes a NEW session — a resumed one keeps its own"
+                )
+
+
+def _stream_session(
+    args, options: IdentifyOptions, api_key: str
+) -> SessionRecorder | None:
+    """Start or resume the --ximilar-stream session, or None without the flag.
+
+    Last in build_pipeline on purpose: a run that fails on a model path must
+    not leave an empty session behind on the platform.
+    """
+    spec = getattr(args, "ximilar_stream", None)
+    if spec is None:
+        return None
+    api = SessionApi(api_key, args.ximilar_stream_url)
+    game = options.game or ""
+    name = args.ximilar_stream_name or (
+        f"{game or options.id_type.label} show {datetime.now():%Y-%m-%d %H:%M}"
+    )
+    session, created = open_session(
+        api,
+        spec,
+        name=name,
+        game=game,
+        platform=args.ximilar_stream_platform,
+        client={
+            "name": "cardstream",
+            "version": __version__,
+            "type": options.id_type.key,
+            "set_code": options.set_code,
+            "alphabet": options.alphabet,
+            "price_stats": options.price_stats,
+        },
+    )
+    session_id = session["id"]
+    verb = "started" if created else "resumed"
+    print(
+        f"[session] {verb} {session.get('name') or 'session'} ({session_id}) — "
+        f"review at {api.url('session', session_id, 'summary')}"
+    )
+    return SessionRecorder(
+        api, session_id, close_session=not args.ximilar_stream_keep_open
+    )
+
+
 def build_pipeline(args) -> Pipeline:
     """Construct a :class:`Pipeline` from parsed args.
 
@@ -587,6 +726,7 @@ def build_pipeline(args) -> Pipeline:
     store = _image_store(args)
     options = _identify_options(args)
     config = _analyzer_config(args)
+    _check_session_flags(args)
 
     detector = _locator(args)
     if args.gate == "embedding":
@@ -611,6 +751,12 @@ def build_pipeline(args) -> Pipeline:
         target += f" [set_code={options.set_code}]"
     if options.price_stats:
         target += " [price_stats]"
+    try:
+        recorder = _stream_session(args, options, api_key)
+    except SessionError as exc:
+        raise ValueError(str(exc)) from None
+    if recorder is not None:
+        target += f" [session {recorder.session_id}]"
     return Pipeline(
         detector=detector,
         embedder=embedder,
@@ -618,6 +764,7 @@ def build_pipeline(args) -> Pipeline:
         config=config,
         description=f"{gate_desc} -> {target}",
         store=store,
+        recorder=recorder,
     )
 
 

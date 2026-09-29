@@ -39,11 +39,12 @@ DOCS = [
     "docs/tuning.md",
     "docs/locators.md",
     "docs/sources.md",
+    "docs/sessions.md",
 ]
 
 # Docs that are allowed to state no defaults at all: prose pages whose job is
 # to point elsewhere. They are still checked for defaults they DO state.
-DOCS_MAY_BE_SILENT = {"README.md", "docs/sources.md"}
+DOCS_MAY_BE_SILENT = {"README.md", "docs/sources.md", "docs/sessions.md"}
 
 ALL_DOCS = [*DOCS, "README.md"]
 

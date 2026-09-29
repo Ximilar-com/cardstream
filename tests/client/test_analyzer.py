@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 from _helpers import (
+    SESSION_ID,
+    FakeSessionApi,
     FakeTracker,
     make_frame,
     unit_vec,
@@ -16,6 +18,7 @@ from _helpers import (
 from cardstream.core.detectors import CardDetector
 from cardstream.core.models import BoundingBox, CardState, DetectionResult
 from cardstream.core.quad import quad_bbox
+from cardstream.core.ximilar_session import SessionRecorder
 
 
 def settle(analyzer, frames=6):
@@ -1092,3 +1095,66 @@ def test_both_outlines_serialize_for_the_page(fake_embedder, fake_identify):
     assert len(d["quad"]) == 4 and len(d["crop_quad"]) == 4
     assert all(isinstance(v, int) for pt in d["crop_quad"] for v in pt)
     json.dumps(d)
+
+
+# --- --ximilar-stream: kept matches are also recorded to the session ----------
+
+
+def _session_recorder(api):
+    return SessionRecorder(api, SESSION_ID, start=False, log=lambda _: None)
+
+
+def test_a_kept_match_is_recorded_with_its_type_and_time(
+    fake_detector, fake_embedder, fake_identify
+):
+    import time
+
+    api = FakeSessionApi()
+    recorder = _session_recorder(api)
+    analyzer = make_analyzer(
+        fake_detector, fake_embedder, fake_identify, recorder=recorder
+    )
+    before = time.time()
+    settle(analyzer, frames=10)
+    assert recorder.recorded == 1  # one paid call, one record
+    recorder.flush()
+    (item,) = api.uploads[0]
+    assert item["full_name"] == "Charizard"
+    assert item["set_name"] == "Base"
+    assert item["id_type"] == "tcg"
+    from datetime import datetime
+
+    assert datetime.fromisoformat(item["seen"]).timestamp() >= before - 1
+
+
+def test_the_category_recorded_is_the_one_the_call_was_made_with(
+    fake_detector, fake_embedder, fake_identify
+):
+    recorder = _session_recorder(FakeSessionApi())
+    fake_identify.options = fake_identify.options.with_(id_type="sport")
+    analyzer = make_analyzer(
+        fake_detector, fake_embedder, fake_identify, recorder=recorder
+    )
+    settle(analyzer, frames=10)
+    assert recorder._pending[0]["id_type"] == "sport"
+
+
+def test_dropped_and_missing_matches_are_not_recorded(
+    fake_detector, fake_embedder, fake_identify
+):
+    recorder = _session_recorder(FakeSessionApi())
+    analyzer = make_analyzer(
+        fake_detector,
+        fake_embedder,
+        fake_identify,
+        recorder=recorder,
+        result_threshold=0.5,
+    )
+    fake_identify.result = {"full_name": "Too far", "distance": 0.9}
+    settle(analyzer, frames=10)
+    assert fake_identify.calls == 1 and recorder.recorded == 0
+
+    fake_identify.result = None
+    fake_embedder.embedding = unit_vec(1)  # a new card, which matches nothing
+    settle(analyzer, frames=10)
+    assert fake_identify.calls == 2 and recorder.recorded == 0

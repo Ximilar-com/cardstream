@@ -39,6 +39,7 @@ from cardstream.core.models import AnalysisResult, BoundingBox, DetectionResult
 from cardstream.core.motion import MotionGate
 from cardstream.core.quad import expand_quad, paid_quad
 from cardstream.core.tracking import ObjectTracker, make_tracker
+from cardstream.core.ximilar_session import SessionRecorder
 
 # The analysis downscale, named so the web layer's own signatures can default
 # to it instead of repeating the number in three more places.
@@ -112,6 +113,7 @@ class SmartAnalyzer:
         run_async: bool = True,
         tracker: ObjectTracker | None = None,
         store: ImageStore | None = None,
+        recorder: SessionRecorder | None = None,
     ) -> None:
         cfg = config or AnalyzerConfig()
         if cfg.gate == "embedding" and embedder is None:
@@ -130,6 +132,10 @@ class SmartAnalyzer:
         # crop, so the whole picture has to be kept from here. In `object` mode
         # save_frame is a no-op and the identify client does the keeping.
         self._store = store
+        # --ximilar-stream: every KEPT match is also queued for the session.
+        # Queued, not sent — record() never touches the network, so the
+        # identify thread is not held up by the session API.
+        self._recorder = recorder
         self._cfg = cfg
         # Paid identify calls this analyzer has fired — the point of the whole
         # state machine, so the UI shows it. Counted on fire, not on success:
@@ -353,6 +359,11 @@ class SmartAnalyzer:
         ident = None
         self.identify_calls += 1
         started = time.monotonic()
+        # When the card was seen, for the session record: the moment the call
+        # fired, not when it came back. The category is read now too — the
+        # settings dialog may switch it while the call is in flight.
+        seen = time.time()
+        id_type = self._identify_client.options.id_type.key
         try:
             ident = self._identify_client.identify(crop_bgr)
             if ident is not None:
@@ -378,6 +389,8 @@ class SmartAnalyzer:
         # Wall time of the whole identify call (network included) — the UI
         # shows it next to the distance.
         ident["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+        if self._recorder is not None:
+            self._recorder.record(ident, id_type, seen)
         if self._on_result is not None:
             self._on_result(ident)
 

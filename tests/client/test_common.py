@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from _helpers import FakeDetector, FakeEmbedder
+from _helpers import SESSION_ID, FakeDetector, FakeEmbedder, FakeSessionApi
 from cardstream.client import common
 from cardstream.client.analyzer import AnalyzerConfig
 from cardstream.client.common import (
@@ -404,3 +404,148 @@ def test_print_identification_adds_a_price_line_only_when_there_is_one(capsys):
     lines = capsys.readouterr().out.strip().splitlines()
     assert lines[1] == "             price: ungraded $4.50 (3\u20139.50)"
     assert lines[2] == "             tcgplayer: https://example.com"
+
+
+# --- --ximilar-stream ----------------------------------------------------------
+
+_BASE = ["--gate", "phash", "--api-key", "k"]
+
+
+@pytest.fixture
+def session_api(monkeypatch):
+    """The session API the pipeline builds, faked; records how it was built."""
+    api = FakeSessionApi()
+    built = {}
+
+    def factory(api_key, base_url):
+        built.update(api_key=api_key, base_url=base_url)
+        return api
+
+    monkeypatch.setattr(common, "SessionApi", factory)
+    api.built = built
+    return api
+
+
+def test_no_session_without_the_flag(session_api):
+    pipeline = build_pipeline(_parse(_BASE))
+    assert pipeline.recorder is None
+    assert session_api.created == [] and session_api.fetched == []
+    pipeline.close()  # nothing to close, still safe
+
+
+def test_new_starts_a_session_described_by_the_run(session_api, capsys):
+    args = _parse(
+        [
+            *_BASE,
+            "--game",
+            "pokemon",
+            "--alphabet",
+            "latin",
+            "--set-code",
+            "cri",
+            "--ximilar-stream",
+            "new",
+            "--ximilar-stream-name",
+            "Friday rips",
+            "--ximilar-stream-platform",
+            "whatnot",
+        ]
+    )
+    pipeline = build_pipeline(args)
+    try:
+        assert pipeline.recorder is not None
+        assert pipeline.recorder.session_id == SESSION_ID
+        (payload,) = session_api.created
+        assert payload["name"] == "Friday rips"
+        assert payload["game"] == "Pokémon"
+        assert payload["platform"] == "whatnot"
+        assert payload["client"]["name"] == "cardstream"
+        assert payload["client"]["type"] == "tcg"
+        assert payload["client"]["set_code"] == "cri"
+        assert session_api.built == {
+            "api_key": "k",
+            "base_url": "https://api.ximilar.com/cardstream/v2",
+        }
+        assert f"[session {SESSION_ID}]" in pipeline.description
+        out = capsys.readouterr().out
+        assert f"started Friday rips ({SESSION_ID})" in out
+        assert f"session/{SESSION_ID}/summary/" in out
+    finally:
+        pipeline.close()
+    assert session_api.closed == [SESSION_ID]
+
+
+def test_a_new_session_is_named_after_the_game_by_default(session_api):
+    args = _parse([*_BASE, "--game", "pokemon", "--alphabet", "latin"])
+    args.ximilar_stream = "NEW"
+    pipeline = build_pipeline(args)
+    pipeline.close()
+    assert re.fullmatch(
+        r"Pokémon show \d{4}-\d\d-\d\d \d\d:\d\d", session_api.created[0]["name"]
+    )
+
+
+def test_an_id_resumes_the_session(session_api):
+    pipeline = build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID]))
+    pipeline.close()
+    assert session_api.fetched == [SESSION_ID] and session_api.created == []
+
+
+def test_keep_open_leaves_the_session_live_on_exit(session_api):
+    args = _parse(
+        [*_BASE, "--ximilar-stream", SESSION_ID, "--ximilar-stream-keep-open"]
+    )
+    build_pipeline(args).close()
+    assert session_api.closed == []
+
+
+def test_the_session_url_is_configurable_for_a_dev_backend(session_api):
+    url = "http://localhost:8000/api/cardstream/v2"
+    args = _parse([*_BASE, "--ximilar-stream", "NEW", "--ximilar-stream-url", url])
+    build_pipeline(args).close()
+    assert session_api.built["base_url"] == url
+
+
+def test_a_bad_session_value_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit):
+        _parse([*_BASE, "--ximilar-stream", "latest"])
+    assert "neither NEW nor a session id" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--ximilar-stream-name", "Show"],
+        ["--ximilar-stream-platform", "tiktok"],
+        ["--ximilar-stream-keep-open"],
+        ["--ximilar-stream-url", "http://localhost:8000"],
+    ],
+)
+def test_session_flags_without_a_session_are_refused(session_api, extra):
+    with pytest.raises(ValueError, match="needs --ximilar-stream"):
+        build_pipeline(_parse([*_BASE, *extra]))
+    assert session_api.created == []
+
+
+@pytest.mark.parametrize(
+    "extra", [["--ximilar-stream-name", "Show"], ["--ximilar-stream-platform", "ebay"]]
+)
+def test_a_resumed_session_cannot_be_renamed(session_api, extra):
+    with pytest.raises(ValueError, match="only describes a NEW session"):
+        build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID, *extra]))
+
+
+def test_a_session_that_cannot_start_is_a_user_facing_error(session_api):
+    session_api.status = "closed"
+    with pytest.raises(ValueError, match="is closed"):
+        build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID]))
+
+
+def test_a_failed_model_load_leaves_no_session_behind(session_api, monkeypatch):
+    def broken(*args, **kwargs):
+        raise RuntimeError("weights missing")
+
+    monkeypatch.setattr(common, "make_segmentor", broken)
+    with pytest.raises(RuntimeError):
+        build_pipeline(_parse([*_BASE, "--ximilar-stream", "NEW"]))
+    assert session_api.created == []

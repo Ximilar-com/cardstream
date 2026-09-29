@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--ximilar-stream NEW|ID` (off unless passed): every identification the page
+  shows is also saved, as text, to a session on the Ximilar platform
+  (`/cardstream/v2/`, same API key, needs the cardstream service), so a show
+  can be reviewed afterwards. `NEW` starts a session and prints its id; an id
+  resumes a live one. Uploads are batched in the background, retried on
+  network or server errors without duplicates, and never hold up the show; a
+  clean exit uploads what is left and closes the session. Companion flags:
+  `--ximilar-stream-name`, `--ximilar-stream-platform`,
+  `--ximilar-stream-keep-open` and `--ximilar-stream-url`. See
+  `docs/sessions.md`.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added

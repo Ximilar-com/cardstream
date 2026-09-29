@@ -9,6 +9,7 @@ when you need to change something.
 | **[Tuning](tuning.md)** | the call economics, the detection filters, the image archive, the settings dialog, and the three resolution knobs |
 | **[Locating the card](locators.md)** | detection vs segmentation, `--detection-expansion`, the optional visual tracker, and training your own |
 | **[Frame sources](sources.md)** | webcams, files, RTSP/RTMP/SRT, `--listen`, and the system ffmpeg requirement |
+| **[Saving a show](sessions.md)** | `--ximilar-stream`: what is sent to the Ximilar platform, resuming, retries, and reviewing a session |
 | **[Model weights](../model/README.md)** | what goes in `model/`, each export's I/O contract, and the model zoo |
 
 Also worth reading: **[SECURITY.md](../SECURITY.md)** — this app holds a
