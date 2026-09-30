@@ -1184,3 +1184,23 @@ def test_finish_without_a_session_is_harmless(
     analyzer = make_analyzer(fake_detector, fake_embedder, fake_identify)
     settle(analyzer)
     analyzer.finish()
+
+
+def test_the_match_is_complete_when_the_core_publishes_it(
+    fake_detector, fake_embedder, fake_identify
+):
+    """The page builds a history row from the FIRST message carrying a match,
+    which may be a snapshot: the thumbnail must already be on it."""
+    analyzer = make_analyzer(fake_detector, fake_embedder, fake_identify)
+    published = []
+    original = analyzer._core.on_identify_done
+
+    def spy(ident):
+        published.append(dict(ident) if ident else ident)
+        original(ident)
+
+    analyzer._core.on_identify_done = spy
+    settle(analyzer, frames=10)
+    (ident,) = published
+    assert ident["thumbnail"].startswith("data:image/jpeg;base64,")
+    assert isinstance(ident["elapsed_ms"], int)

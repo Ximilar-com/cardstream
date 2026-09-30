@@ -591,3 +591,11 @@ def test_min_card_time_reaches_the_page():
 def test_min_card_time_defaults_to_one_second():
     app = create_web_app(lambda **k: None)
     assert TestClient(app).get("/mode").json()["min_card_time"] == 1.0
+
+
+def test_the_page_is_always_revalidated(fake_detector, fake_embedder, fake_identify):
+    """An upgrade must reach the browser: a cached overlay.js once kept the
+    history thumbnails away after the process already sent them."""
+    client = _make_client(fake_detector, fake_embedder, fake_identify)
+    for path in ("/smart/", "/shared/overlay.js", "/shared/style.css", "/mode"):
+        assert client.get(path).headers["cache-control"] == "no-cache", path

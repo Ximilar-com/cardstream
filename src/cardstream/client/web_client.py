@@ -91,6 +91,15 @@ def create_web_app(
     )
     app = FastAPI(title="Smart Card Client", lifespan=pump.lifespan if pump else None)
 
+    @app.middleware("http")
+    async def _revalidate(request, call_next):
+        """The page comes from this process and changes with every upgrade:
+        make the browser revalidate its files instead of running a cached
+        overlay.js or style.css against a newer process."""
+        response = await call_next(request)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
     @app.exception_handler(RequestValidationError)
     async def _validation_as_400(request, exc: RequestValidationError) -> JSONResponse:
         """FastAPI's default is 422 with a {"detail": [...]} body; the page has

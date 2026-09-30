@@ -388,6 +388,8 @@ class SmartAnalyzer:
                         f"{self._cfg.result_threshold} — dropping match"
                     )
                     ident = None
+            if ident is not None:
+                self._complete(ident, crop_bgr, started)
         except Exception as exc:
             # Surface client failures — a raising client must not kill the
             # daemon thread silently and leave the state reverting unexplained.
@@ -399,16 +401,20 @@ class SmartAnalyzer:
             # upstream can't identify — it retries when the card changes.
             self._log("[identify] no match / failed; not retrying this card")
             return
+        if self._on_result is not None:
+            self._on_result(ident)
+
+    def _complete(self, ident: dict, crop_bgr: np.ndarray, started: float) -> None:
+        """Everything a kept match carries, added BEFORE the core publishes it:
+        a snapshot taken in between would reach the page without it, and the
+        page builds a history row only once."""
         # Wall time of the whole identify call (network included) — the UI
         # shows it next to the distance.
         ident["elapsed_ms"] = int((time.monotonic() - started) * 1000)
         # What was actually identified, small, for the page's history row.
-        # Page-only: the session upload copies declared fields, never this.
         thumbnail = thumbnail_data_url(crop_bgr)
         if thumbnail is not None:
             ident["thumbnail"] = thumbnail
-        if self._on_result is not None:
-            self._on_result(ident)
 
     def _snapshot(self) -> AnalysisResult:
         snap = self._core.snapshot()

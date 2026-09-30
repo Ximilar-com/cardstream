@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every history row on the page now shows a small thumbnail of the crop that
   was identified; the right panel is wider to fit it. Thumbnails stay local.
 
+### Fixed
+- The web page's scripts and styles are revalidated on every load, so after an
+  upgrade the browser no longer keeps serving the previous page (which, for
+  one, showed the history without thumbnails).
+- A history row always gets its thumbnail: the crop is attached before the
+  match is published, not after.
+
 ## [0.3.0] - 2026-09-03
 
 ### Added
