@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shows is also saved, as text, to a session on the Ximilar platform
   (`/cardstream/v2/`, same API key, needs the cardstream service), so a show
   can be reviewed afterwards. `NEW` starts a session and prints its id; an id
-  resumes a live one. Uploads are batched in the background, retried on
+  resumes one, reopening it if it was closed. Uploads are batched in the background, retried on
   network or server errors without duplicates, and never hold up the show; a
   clean exit uploads what is left and closes the session. Companion flags:
   `--ximilar-stream-name`, `--ximilar-stream-platform`,

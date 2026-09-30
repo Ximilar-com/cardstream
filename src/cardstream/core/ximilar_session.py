@@ -281,6 +281,10 @@ class SessionApi:
     def get(self, session_id: str) -> dict[str, Any]:
         return self._session("GET", self.url("session", session_id))
 
+    def reopen(self, session_id: str) -> dict[str, Any]:
+        """Make a closed session live again; a live one comes back unchanged."""
+        return self._session("POST", self.url("session", session_id, "reopen"))
+
     def upload(self, session_id: str, items: list[dict[str, Any]]) -> UploadReply:
         url = self.url("session", session_id, "identifications")
         try:
@@ -345,9 +349,10 @@ def open_session(
 ) -> tuple[dict[str, Any], bool]:
     """Start (``spec`` = NEW) or resume (``spec`` = a session id) a session.
 
-    Returns ``(session, created)``. Only a LIVE session can be resumed — a
-    closed one refuses uploads, which is better said at startup than
-    discovered after the first batch.
+    Returns ``(session, created)``. A closed session (the client closes its
+    session on a clean exit) is reopened, so the show continues in it; if it
+    cannot be, that is said at startup rather than discovered after the
+    first batch.
     """
     spec = parse_session_spec(spec)
     if spec == NEW_SESSION:
@@ -359,9 +364,19 @@ def open_session(
         }
         return api.create(payload), True
     session = api.get(spec)
+    if session.get("status") == "live":
+        return session, False
+    status = session.get("status", "not live")
+    try:
+        session = api.reopen(spec)
+    except SessionError as exc:
+        raise SessionError(
+            f"session {spec} is {status} and could not be reopened ({exc}) — "
+            f"start a new one with --ximilar-stream {NEW_SESSION}"
+        ) from None
     if session.get("status") != "live":
         raise SessionError(
-            f"session {spec} is {session.get('status', 'not live')} — "
+            f"session {spec} is {status} and could not be reopened — "
             f"start a new one with --ximilar-stream {NEW_SESSION}"
         )
     return session, False

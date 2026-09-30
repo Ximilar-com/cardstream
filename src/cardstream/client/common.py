@@ -497,7 +497,8 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         metavar="NEW|ID",
         help=f"also save every identification to a session on the Ximilar "
         f"platform, to review the show afterwards: {NEW_SESSION} starts one "
-        "(its id is printed), a session id resumes a live one. Uses the same "
+        "(its id is printed), a session id resumes one (a closed one is "
+        "reopened). Uses the same "
         "API key; the account needs the cardstream service. Off by default — "
         "then the identify call is the only thing that leaves this machine",
     )
@@ -529,9 +530,9 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         "--ximilar-stream-keep-open",
         dest="ximilar_stream_keep_open",
         action="store_true",
-        help="leave the session live on exit so a restarted client can resume "
-        "it with --ximilar-stream ID; by default a clean exit uploads what is "
-        "left and closes the session",
+        help="leave the session live on exit, as a show that is not over yet; "
+        "by default a clean exit uploads what is left and closes the session "
+        "(--ximilar-stream ID reopens it either way)",
     )
     session.add_argument(
         "--ximilar-stream-url",

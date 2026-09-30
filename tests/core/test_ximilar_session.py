@@ -158,9 +158,27 @@ def test_an_id_resumes_a_live_session():
     assert api.fetched == [SESSION_ID] and api.created == []
 
 
-def test_a_closed_session_cannot_be_resumed():
-    with pytest.raises(SessionError, match=r"is closed .* --ximilar-stream NEW"):
-        open_session(FakeSessionApi(status="closed"), SESSION_ID)
+def test_an_id_reopens_a_closed_session():
+    api = FakeSessionApi(status="closed")
+    session, created = open_session(api, SESSION_ID)
+    assert not created and session["status"] == "live"
+    assert api.reopened == [SESSION_ID] and api.created == []
+
+
+def test_a_live_session_is_not_reopened():
+    api = FakeSessionApi()
+    open_session(api, SESSION_ID)
+    assert api.reopened == []
+
+
+def test_a_session_that_cannot_be_reopened_is_refused():
+    api = FakeSessionApi(status="closed")
+    api.reopen_failure = "session API refused: HTTP 404: Not found."
+    with pytest.raises(
+        SessionError,
+        match=r"is closed and could not be reopened .*HTTP 404.* --ximilar-stream NEW",
+    ):
+        open_session(api, SESSION_ID)
 
 
 # --- the HTTP calls ---------------------------------------------------------------
@@ -211,6 +229,17 @@ def test_create_posts_to_the_session_endpoint_with_the_identify_headers(http):
     assert call["url"] == "http://localhost:8000/api/cardstream/v2/session/"
     assert call["headers"]["Authorization"] == "Token key"
     assert call["headers"]["User-Agent"] == "CardStream"
+
+
+def test_reopen_posts_to_the_reopen_endpoint(http):
+    calls, replies = http
+    replies.append(_Response(200, {"id": SESSION_ID, "status": "live"}))
+    api = SessionApi("key", "http://localhost:8000/api/cardstream/v2/")
+    assert api.reopen(SESSION_ID)["status"] == "live"
+    assert (calls[0]["method"], calls[0]["url"]) == (
+        "POST",
+        f"http://localhost:8000/api/cardstream/v2/session/{SESSION_ID}/reopen/",
+    )
 
 
 def test_a_refused_start_says_why(http):

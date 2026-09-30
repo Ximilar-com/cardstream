@@ -19,7 +19,7 @@ from cardstream.core.models import (
     DetectionResult,
     Identification,
 )
-from cardstream.core.ximilar_session import Outcome, UploadReply
+from cardstream.core.ximilar_session import Outcome, SessionError, UploadReply
 
 # --- Synthetic frames / crops ----------------------------------------------
 
@@ -334,6 +334,8 @@ class FakeSessionApi:
         self.uploads: list[list[dict]] = []
         self.closed: list[str] = []
         self.close_failure: str | None = None
+        self.reopened: list[str] = []
+        self.reopen_failure: str | None = None  # raised as a SessionError
 
     def url(self, *parts: str) -> str:
         return "/".join([self.base_url, *parts]) + "/"
@@ -344,6 +346,13 @@ class FakeSessionApi:
 
     def get(self, session_id: str) -> dict:
         self.fetched.append(session_id)
+        return {"id": session_id, "name": "Friday show", "status": self.status}
+
+    def reopen(self, session_id: str) -> dict:
+        self.reopened.append(session_id)
+        if self.reopen_failure is not None:
+            raise SessionError(self.reopen_failure)
+        self.status = "live"
         return {"id": session_id, "name": "Friday show", "status": self.status}
 
     def upload(self, session_id: str, items: list[dict]) -> UploadReply:

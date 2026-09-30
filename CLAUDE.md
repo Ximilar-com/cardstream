@@ -206,8 +206,8 @@ src/cardstream/
                      for network/429/5xx, REJECTED for a bad batch, STOPPED
                      for 401/403/404/409 — except upload_image's 404,
                      REJECTED: the row was deleted, not the session),
-                     open_session (NEW creates, an id resumes a LIVE session
-                     only) and SessionRecorder — history() hands each
+                     open_session (NEW creates, an id resumes a session and
+                     reopens it if closed) and SessionRecorder — history() hands each
                      analyzer its ShowHistory, count_call() counts paid
                      calls, keep_cutout(ident, crop) keeps a match's crop
                      (JPEG, <=1024 px; called BEFORE the core publishes the
@@ -679,8 +679,9 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   print), not to the page's debug panel; camera mode's per-connection
   analyzers each keep their own history but share the one session the process
   opened. The session is opened LAST in build_pipeline so a run that dies on a
-  model path leaves no empty session behind; a closed session cannot be
-  resumed, hence `--ximilar-stream-keep-open` for a planned restart.
+  model path leaves no empty session behind; resuming a closed session
+  reopens it (`POST session/{id}/reopen/`, not billed), so a restart needs no
+  `--ximilar-stream-keep-open`.
 - **`model/` is gitignored except its README** (weights + training artifacts,
   ~250 MB for the segmentor alone). The subfolders only exist once you put
   weights in them, and `scripts/install.sh` + the Docker image do NOT use this

@@ -37,20 +37,22 @@ session:
 | Flag | What it does |
 | --- | --- |
 | `--ximilar-stream NEW` | start a new session |
-| `--ximilar-stream ID` | resume a live session, e.g. after restarting the client mid-show |
+| `--ximilar-stream ID` | resume a session, e.g. after restarting the client mid-show; a closed one is reopened |
 | `--ximilar-stream-name NAME` | name a new session; otherwise it is named after the game (or card type) and the start time |
 | `--ximilar-stream-platform` | where the show streams: `whatnot`, `tiktok`, `ebay`, `fanatics`, `youtube`, `twitch` or `other` |
 | `--no-ximilar-stream-images` | save the rows as text only, without the crop of each card |
-| `--ximilar-stream-keep-open` | leave the session live on exit, so the next run can resume it |
+| `--ximilar-stream-keep-open` | leave the session live on exit, as a show that is not over yet |
 | `--ximilar-stream-url URL` | the session API base URL, only for a development backend |
 
 The name and platform describe a **new** session; passing them with an ID is
 refused. Any of the other session flags without `--ximilar-stream` is refused
 too, rather than silently doing nothing.
 
-A closed session cannot be resumed. If you plan to restart the client during a
-show (to change a flag the settings dialog does not cover), run with
-`--ximilar-stream-keep-open`, then resume with the printed ID.
+A clean exit closes the session, but it can still be continued: resuming it
+with `--ximilar-stream ID` reopens it and the show goes on in the same session
+(the session page on the Ximilar platform shows this command as "Continue this
+show"). Only starting a session is billed, so reopening it costs nothing. With
+`--ximilar-stream-keep-open` the session simply stays live between runs.
 
 ## What is sent
 

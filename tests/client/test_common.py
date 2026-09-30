@@ -546,9 +546,19 @@ def test_a_resumed_session_cannot_be_renamed(session_api, extra):
         build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID, *extra]))
 
 
+def test_a_closed_session_is_reopened_and_resumed(session_api, capsys):
+    session_api.status = "closed"
+    pipeline = build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID]))
+    assert session_api.reopened == [SESSION_ID] and session_api.created == []
+    assert pipeline.recorder is not None
+    assert "resumed" in capsys.readouterr().out
+    pipeline.close()
+
+
 def test_a_session_that_cannot_start_is_a_user_facing_error(session_api):
     session_api.status = "closed"
-    with pytest.raises(ValueError, match="is closed"):
+    session_api.reopen_failure = "session API refused: HTTP 403: not allowed"
+    with pytest.raises(ValueError, match="is closed and could not be reopened"):
         build_pipeline(_parse([*_BASE, "--ximilar-stream", SESSION_ID]))
 
 
