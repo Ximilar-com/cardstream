@@ -83,8 +83,9 @@ it costs nothing more. Swap cards and it costs exactly one call.
 
 Everything above the last row is free and local. Nothing but that one crop
 leaves the process — there is no service in the path. The one opt-in exception
-is `--ximilar-stream`, which also saves each identification (text, never
-images) to a session on the Ximilar platform — see
+is `--ximilar-stream`, which also saves each card shown (its match as text,
+plus the same crop the identify call received, unless
+`--no-ximilar-stream-images`) to a session on the Ximilar platform — see
 **[Saving a show](docs/sessions.md)**.
 
 ## Model weights

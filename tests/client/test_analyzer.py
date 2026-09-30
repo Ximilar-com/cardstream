@@ -1178,6 +1178,22 @@ def test_a_kept_match_carries_a_thumbnail_of_the_identified_crop(
     assert ident["thumbnail"].startswith("data:image/jpeg;base64,")
 
 
+def test_a_kept_match_hands_its_crop_to_the_session(
+    fake_detector, fake_embedder, fake_identify
+):
+    api = FakeSessionApi()
+    recorder = _session_recorder(api)
+    analyzer = make_analyzer(
+        fake_detector, fake_embedder, fake_identify, recorder=recorder
+    )
+    settle(analyzer, frames=10)
+    analyzer.finish()
+    recorder.flush()
+    ((event_id, image),) = api.images
+    assert event_id == api.uploads[0][0]["event_id"]
+    assert image and not image.startswith("data:")  # base64, not the thumbnail
+
+
 def test_finish_without_a_session_is_harmless(
     fake_detector, fake_embedder, fake_identify
 ):

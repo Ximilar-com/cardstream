@@ -3,8 +3,8 @@
 By default nothing is kept: the history on the page is gone when the tab
 closes, and the identify call is the only thing that leaves your machine.
 `--ximilar-stream` opts in to one more thing. The show's history, exactly as
-the page lists it, and the number of paid identify calls are also saved to a
-**session** on the Ximilar platform. You can come back after the show and see
+the page lists it, the crop each card was identified from, and the number of
+paid identify calls are also saved to a **session** on the Ximilar platform. You can come back after the show and see
 what was shown, when, for how long, how sure each match was and what it was
 worth.
 
@@ -22,7 +22,7 @@ On a clean exit (Ctrl-C) it uploads whatever is still queued and closes the
 session:
 
 ```
-[session] 212 card(s) and 230 paid call(s) saved to 0b7c9a52-… — session closed
+[session] 212 card(s), 212 image(s) and 230 paid call(s) saved to 0b7c9a52-… — session closed
 ```
 
 ## Requirements
@@ -40,6 +40,7 @@ session:
 | `--ximilar-stream ID` | resume a live session, e.g. after restarting the client mid-show |
 | `--ximilar-stream-name NAME` | name a new session; otherwise it is named after the game (or card type) and the start time |
 | `--ximilar-stream-platform` | where the show streams: `whatnot`, `tiktok`, `ebay`, `fanatics`, `youtube`, `twitch` or `other` |
+| `--no-ximilar-stream-images` | save the rows as text only, without the crop of each card |
 | `--ximilar-stream-keep-open` | leave the session live on exit, so the next run can resume it |
 | `--ximilar-stream-url URL` | the session API base URL, only for a development backend |
 
@@ -70,6 +71,13 @@ the paid calls behind it are counted. A card shown for less than
 - **Prices:** the price statistics, when `--price-stats` is on. The platform
   derives a representative price from them.
 
+**The crop of each row:** the cut-out card the row's first identification
+was made from, the same picture the identify call received, as a JPEG no
+larger than 1024 px on its long side. It is uploaded once per row, right
+after the row itself is saved; the platform keeps it privately with a
+thumbnail, and deleting the row or the session deletes them.
+`--no-ximilar-stream-images` turns this off.
+
 A row is sent as soon as it earns its place in the list. It is sent again,
 under the same id, when the card leaves or comes back, and every ten seconds
 while it stays, so the session updates the row rather than adding one.
@@ -82,9 +90,10 @@ At the start, the session is described by its name, game, platform and the
 client's settings (version, card type, set code, alphabet and whether prices
 are on).
 
-What is **not** sent: images, frames or video (the history thumbnails stay on
-the page), anything from the platform you stream on (buyers, sales, chat), and
-matches the result threshold dropped.
+What is **not** sent: frames or video, crops of matches that did not start a
+row (a card identified again is merged into its row, which keeps its first
+crop), the page's own history thumbnails, anything from the platform you
+stream on (buyers, sales, chat), and matches the result threshold dropped.
 
 ## When the network misbehaves
 
@@ -99,6 +108,10 @@ thread uploads in batches every few seconds.
   oldest beyond that. A row that changes while queued is sent once, in its
   latest state.
 - **A rejected batch** (malformed data) is dropped and logged.
+- **Images** wait for their row to be saved, then follow the same rules: a
+  transient failure is retried, and a rejected image (for instance of a row
+  deleted on the platform during the show) is dropped and logged. At most 200
+  wait for an unreachable API; beyond that the oldest are dropped.
 - **A session that is closed, missing or forbidden** stops the uploads for the
   rest of the run. The show itself carries on.
 - **On exit** the card still on stream gets its final time, then the client
@@ -123,7 +136,8 @@ curl -H "Authorization: Token $XIMILAR_API_KEY" \
   total, when the first and last card were seen, the most valuable cards and
   the most frequent sets.
 - **The identification list** has every row in the order the cards were
-  shown, with each card's time on stream and calls.
+  shown, with each card's time on stream and calls, and temporary links to
+  its image and thumbnail.
 - **The session list** has all your sessions.
 
 ## Limitations

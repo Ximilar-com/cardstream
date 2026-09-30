@@ -314,14 +314,19 @@ class FakeSessionApi:
     """Stands in for ``core.ximilar_session.SessionApi`` — no network.
 
     Records every call. ``replies`` scripts the upload outcomes in order;
-    once it runs out, every upload is stored.
+    once it runs out, every upload is stored. ``call_replies`` and
+    ``image_replies`` do the same for call reports and image uploads.
     """
 
     base_url = "https://api.test/cardstream/v2"
 
-    def __init__(self, replies=(), status: str = "live", call_replies=()) -> None:
+    def __init__(
+        self, replies=(), status: str = "live", call_replies=(), image_replies=()
+    ) -> None:
         self.replies = list(replies)
         self.call_replies = list(call_replies)
+        self.image_replies = list(image_replies)
+        self.images: list[tuple[str, str]] = []  # (event_id, base64 JPEG)
         self.status = status
         self.reported: list[tuple[str, int]] = []
         self.created: list[dict] = []
@@ -346,6 +351,12 @@ class FakeSessionApi:
         if self.replies:
             return self.replies.pop(0)
         return UploadReply(Outcome.STORED, created=len(items))
+
+    def upload_image(self, session_id: str, event_id: str, image: str) -> UploadReply:
+        self.images.append((event_id, image))
+        if self.image_replies:
+            return self.image_replies.pop(0)
+        return UploadReply(Outcome.STORED)
 
     def report_calls(self, session_id: str, run: str, calls: int) -> UploadReply:
         self.reported.append((run, calls))

@@ -56,12 +56,21 @@ def thumbnail_data_url(
     h, w = image_bgr.shape[:2]
     if h == 0 or w == 0:
         return None
-    scale = min(1.0, long_edge / max(h, w))
+    b64 = encode_jpeg_b64(fit_long_edge(image_bgr, long_edge), JPEG_QUALITY_THUMBNAIL)
+    return f"data:image/jpeg;base64,{b64}" if b64 is not None else None
+
+
+def fit_long_edge(image_bgr: np.ndarray, long_edge: int) -> np.ndarray:
+    """Shrink so the long edge is at most ``long_edge``, preserving aspect.
+
+    Returns the SAME object when it already fits; never upscales.
+    """
+    h, w = image_bgr.shape[:2]
+    scale = min(1.0, long_edge / max(h, w, 1))
     if scale < 1.0:
         size = (max(1, round(w * scale)), max(1, round(h * scale)))
         image_bgr = cv2.resize(image_bgr, size, interpolation=cv2.INTER_AREA)
-    b64 = encode_jpeg_b64(image_bgr, JPEG_QUALITY_THUMBNAIL)
-    return f"data:image/jpeg;base64,{b64}" if b64 is not None else None
+    return image_bgr
 
 
 def decode_jpeg(data: bytes) -> np.ndarray | None:

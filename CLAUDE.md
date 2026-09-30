@@ -41,7 +41,8 @@ thread) — RF-DETR/RT-DETRv2 detection, MobileNetV2-embedding (or pHash) gate �
 and only one JPEG crop per distinct card leaves the machine, straight to
 Ximilar. **Everything runs locally; there is no service in the path.** The one
 opt-in exception is `--ximilar-stream`: the show's history rows (one per card
-shown, exactly as the page lists them, text only) and the paid-call count are
+shown, exactly as the page lists them, as text), each row's identified crop
+(unless `--no-ximilar-stream-images`) and the paid-call count are
 also queued for a session on the Ximilar platform, so the show can be reviewed
 afterwards — off the frame loop and off the identify path's critical section,
 see `core/show_history.py` and `core/ximilar_session.py`.
@@ -191,29 +192,38 @@ src/cardstream/
                      refresh_seconds, always with the row's event_id.
                      DEFAULT_MIN_CARD_TIME is the web flag's default. Stdlib
                      only, clocks injectable
-    ximilar_session.py  --ximilar-stream, requests only: session_item (a
-                     history row -> the upload item the session API validates:
-                     set -> set_name, confidence_tier -> confidence, text
-                     clipped to the API's column limits, links reduced to text,
-                     + duration and calls; declared fields only, so the
-                     thumbnail never leaves — ONE malformed field would 400 the
-                     whole batch, so it is made safe here, once), SessionApi
-                     (create / get / upload / report_calls / close against
+    ximilar_session.py  --ximilar-stream, requests + imaging: session_item (a
+                     history row -> the upload item the session API
+                     validates: set -> set_name, confidence_tier ->
+                     confidence, text clipped to the API's column limits,
+                     links reduced to text, + duration and calls; declared
+                     fields only, so text only and the thumbnail never rides
+                     along — ONE malformed field would 400 the whole batch,
+                     so it is made safe here, once), SessionApi (create / get
+                     / upload / upload_image / report_calls / close against
                      /cardstream/v2/, auth_headers shared with the identify
                      call; every reply sorted into an Outcome: STORED, RETRY
-                     for network/429/5xx, REJECTED for a bad batch, STOPPED for
-                     401/403/404/409), open_session (NEW creates, an id resumes
-                     a LIVE session only) and SessionRecorder — history() hands
-                     each analyzer its ShowHistory, count_call() counts paid
-                     calls; neither touches the network nor raises. Rows queue
-                     by event_id (a newer version replaces a queued one; one
-                     that changed while its batch was on the wire is kept and
-                     re-sent — the API turns a known event_id into an update
-                     that can only grow), a daemon thread flushes batches of
-                     <=500 with backoff, one pass per flush, then reports the
-                     run's call total (per-run id, so a resumed session adds
-                     up); close() finishes the open rows, drains with a timeout
-                     and closes the session unless --ximilar-stream-keep-open
+                     for network/429/5xx, REJECTED for a bad batch, STOPPED
+                     for 401/403/404/409 — except upload_image's 404,
+                     REJECTED: the row was deleted, not the session),
+                     open_session (NEW creates, an id resumes a LIVE session
+                     only) and SessionRecorder — history() hands each
+                     analyzer its ShowHistory, count_call() counts paid
+                     calls, keep_cutout(ident, crop) keeps a match's crop
+                     (JPEG, <=1024 px; called BEFORE the core publishes the
+                     match) until the row that ident starts claims it by
+                     identity (unclaimed ones: latest 16); none touches the
+                     network or raises. Rows queue by event_id (a newer
+                     version replaces a queued one; one that changed while
+                     its batch was on the wire is kept and re-sent — the API
+                     turns a known event_id into an update that can only
+                     grow), a daemon thread flushes batches of <=500 with
+                     backoff, one pass per flush, then uploads the image of
+                     every SAVED row once (<=200 held; a rejected row drops
+                     its image), then reports the run's call total (per-run
+                     id, so a resumed session adds up); close() finishes the
+                     open rows, drains with a timeout and closes the session
+                     unless --ximilar-stream-keep-open
     image_store.py   ImageStore — the --store-images folder: one file per PAID
                      call. --store-images-type picks the shape and the mode
                      lives HERE, so both call sites stay unconditional: `object`
@@ -230,7 +240,8 @@ src/cardstream/
                      save_b64 logs and returns None instead of raising, so a
                      full disk costs the archive, not the show
     imaging.py       encode_jpeg(_b64) / decode_jpeg / upscale_small / downscale;
-                     thumbnail_data_url (the history row's small JPEG);
+                     fit_long_edge (shrink-only); thumbnail_data_url (the
+                     history row's small JPEG);
                      FramePair (analysis frame for detect+gate, full frame for the
                      identify crop; .crop(bbox) rescales outward + owns its array,
                      .warp(quad) is its segmentation counterpart — same contract,
@@ -261,7 +272,8 @@ src/cardstream/
                      IDENTIFIED without touching what was LOCATED);
                      stamps elapsed_ms and a thumbnail of the identified crop
                      (thumbnail_data_url) on each kept identification for the
-                     UI, feeds its ShowHistory every snapshot and the recorder
+                     UI and hands the crop to the recorder (keep_cutout) —
+                     all in _complete, BEFORE the core publishes it — feeds its ShowHistory every snapshot and the recorder
                      every fired call under --ximilar-stream (finish() ends the
                      row when a camera tab disconnects), counts
                      fired calls in .identify_calls (the page's "N calls" badge) and

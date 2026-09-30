@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   session also records every paid identify call, matched or not.
 - Every history row on the page now shows a small thumbnail of the crop that
   was identified; the right panel is wider to fit it. Thumbnails stay local.
+- Each session row also gets the crop its card was identified from (the same
+  picture the identify call received, at most 1024 px), uploaded once after
+  the row is saved and retried like the rows; the platform keeps it privately
+  with a thumbnail. `--no-ximilar-stream-images` saves text only.
 
 ### Fixed
 - The web page's scripts and styles are revalidated on every load, so after an

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import base64
 import threading
 from datetime import datetime
 
+import numpy as np
 import pytest
 import requests
 
 from _helpers import SESSION_ID, FakeSessionApi, make_identification, wait_until
 from cardstream.core import ximilar_session
+from cardstream.core.imaging import decode_jpeg
 from cardstream.core.ximilar_session import (
+    CUTOUT_LONG_EDGE,
     MAX_BATCH,
     NEW_SESSION,
     Outcome,
@@ -261,6 +265,28 @@ def test_paid_calls_are_reported_per_run(http):
     assert api.report_calls(SESSION_ID, "run-1", 8).outcome is Outcome.STOPPED
 
 
+@pytest.mark.parametrize(
+    ("reply", "outcome"),
+    [
+        (_Response(200, {"id": "row"}), Outcome.STORED),
+        (_Response(500, "boom"), Outcome.RETRY),
+        (requests.ConnectionError("no route"), Outcome.RETRY),
+        (_Response(400, {"image": ["not an image"]}), Outcome.REJECTED),
+        # The row was deleted on the platform: only its image is lost.
+        (_Response(404, {"detail": "No row with this event_id"}), Outcome.REJECTED),
+        (_Response(409, {"detail": "The session is closed"}), Outcome.STOPPED),
+        (_Response(403, {"detail": "forbidden"}), Outcome.STOPPED),
+    ],
+)
+def test_image_replies_are_sorted_by_what_happens_next(http, reply, outcome):
+    calls, replies = http
+    replies.append(reply)
+    result = SessionApi("key").upload_image(SESSION_ID, "evt-1", "QUFB")
+    assert result.outcome is outcome
+    assert calls[0]["url"].endswith(f"/session/{SESSION_ID}/images/")
+    assert calls[0]["json"] == {"event_id": "evt-1", "image": "QUFB"}
+
+
 def test_close_reports_a_failure_instead_of_raising(http):
     calls, replies = http
     replies.extend([_Response(200, {}), _Response(404, {"detail": "Not found."})])
@@ -446,7 +472,8 @@ def test_close_finishes_the_rows_uploads_and_closes_the_session():
     assert rows and rows[-1]["duration"] >= 2.0  # the open row was closed by close()
     assert api.reported == [(recorder.run_id, 1)]
     assert api.closed == [SESSION_ID]
-    assert "1 card(s) and 1 paid call(s)" in logs[-1] and "session closed" in logs[-1]
+    assert "1 card(s), 0 image(s) and 1 paid call(s)" in logs[-1]
+    assert "session closed" in logs[-1]
     recorder.queue(_row("late"))  # after close: ignored
     recorder.close()  # idempotent
     assert api.closed == [SESSION_ID]
@@ -513,3 +540,180 @@ def test_queue_and_count_are_safe_from_many_threads():
     assert recorder.flush()
     assert sum(len(batch) for batch in api.uploads) == 400
     assert api.reported == [(recorder.run_id, 400)]
+
+
+# --- row images -------------------------------------------------------------------
+
+
+def _crop(height: int = 700, width: int = 500, value: int = 90) -> np.ndarray:
+    return np.full((height, width, 3), value, dtype=np.uint8)
+
+
+def _match(name: str = "Charizard") -> dict:
+    return {"full_name": name, "name": name}
+
+
+def _shown(recorder, *matches, until: float = 2.0):
+    """Show ``matches`` one after another on one history, then end the show."""
+    history = recorder.history(lambda: "tcg")
+    now = 0.0
+    for match in matches:
+        history.observe("identified", match, now=now)
+        now += until
+        history.observe("identified", match, now=now)
+    history.finish(now=now)
+    return history
+
+
+def _decoded(image: str) -> np.ndarray:
+    return decode_jpeg(base64.b64decode(image))
+
+
+def test_a_rows_image_is_uploaded_once_after_the_row():
+    api = FakeSessionApi()
+    recorder = _recorder(api, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    assert recorder.flush()
+    assert recorder.flush()  # nothing left to send
+    ((event_id, image),) = api.images
+    assert event_id == api.uploads[0][0]["event_id"]
+    assert _decoded(image).shape == (700, 500, 3)
+    assert recorder.images_saved == 1 and recorder.images_pending == 0
+    assert "image" not in api.uploads[0][0]  # rows stay text
+
+
+def test_a_large_crop_is_capped_before_it_is_kept():
+    api = FakeSessionApi()
+    recorder = _recorder(api, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop(3000, 2000))
+    _shown(recorder, match)
+    recorder.flush()
+    assert max(_decoded(api.images[0][1]).shape[:2]) == CUTOUT_LONG_EDGE
+
+
+def test_the_image_is_the_crop_of_the_rows_first_match():
+    """The same card identified again is merged into its row, which keeps the
+    first match - and so the first crop."""
+    api = FakeSessionApi()
+    recorder = _recorder(api, min_card_time=0)
+    history = recorder.history(lambda: "tcg")
+    first, again = _match(), _match()
+    recorder.keep_cutout(first, _crop(value=10))
+    history.observe("identified", first, now=0.0)
+    recorder.keep_cutout(again, _crop(value=200))
+    history.observe("identified", again, now=1.0)
+    history.finish(now=2.0)
+    recorder.flush()
+    ((_, image),) = api.images
+    assert _decoded(image).mean() < 50
+
+
+def test_a_match_that_never_becomes_a_row_uploads_nothing():
+    api = FakeSessionApi()
+    recorder = _recorder(api, min_card_time=5.0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match, until=1.0)  # shorter than --min-card-time
+    recorder.flush()
+    assert api.uploads == [] and api.images == []
+
+
+def test_without_images_only_text_is_saved():
+    api = FakeSessionApi()
+    logs: list[str] = []
+    recorder = _recorder(api, logs, min_card_time=0, images=False)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    recorder.close()
+    assert api.uploads and api.images == []
+    assert "1 card(s) and 0 paid call(s)" in logs[-1]
+
+
+def test_an_image_waits_for_its_row_to_be_saved():
+    api = FakeSessionApi(replies=[UploadReply(Outcome.RETRY, "down")])
+    recorder = _recorder(api, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    assert not recorder.flush()
+    assert api.images == [] and recorder.images_pending == 1
+    assert recorder.flush()
+    assert len(api.images) == 1
+
+
+def test_a_transient_image_failure_is_retried():
+    api = FakeSessionApi(image_replies=[UploadReply(Outcome.RETRY, "HTTP 503")])
+    logs: list[str] = []
+    recorder = _recorder(api, logs, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    assert not recorder.flush()
+    assert any("image upload failed (HTTP 503)" in line for line in logs)
+    assert recorder.flush()
+    assert len(api.images) == 2 and recorder.images_saved == 1
+
+
+def test_a_rejected_image_is_dropped_and_the_others_go_on():
+    api = FakeSessionApi(image_replies=[UploadReply(Outcome.REJECTED, "HTTP 404")])
+    logs: list[str] = []
+    recorder = _recorder(api, logs, min_card_time=0)
+    first, second = _match("A"), _match("B")
+    recorder.keep_cutout(first, _crop())
+    recorder.keep_cutout(second, _crop())
+    _shown(recorder, first, second)
+    assert recorder.flush()
+    assert len(api.images) == 2
+    assert (recorder.images_saved, recorder.images_dropped) == (1, 1)
+    assert any("image of a row rejected (HTTP 404)" in line for line in logs)
+    assert recorder.stopped is None
+
+
+def test_a_closed_session_stops_image_uploads_too():
+    api = FakeSessionApi(image_replies=[UploadReply(Outcome.STOPPED, "HTTP 409")])
+    recorder = _recorder(api, min_card_time=0)
+    first, second = _match("A"), _match("B")
+    recorder.keep_cutout(first, _crop())
+    recorder.keep_cutout(second, _crop())
+    _shown(recorder, first, second)
+    assert recorder.flush()
+    assert len(api.images) == 1
+    assert recorder.stopped == "HTTP 409"
+    assert recorder.images_pending == 0
+    assert api.reported == []  # nothing passes a closed session
+
+
+def test_a_rejected_row_takes_its_image_with_it():
+    api = FakeSessionApi(replies=[UploadReply(Outcome.REJECTED, "HTTP 400")])
+    recorder = _recorder(api, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    recorder.flush()
+    assert api.images == [] and recorder.images_pending == 0
+    assert recorder.images_dropped == 1
+
+
+def test_images_waiting_for_the_api_are_bounded():
+    api = FakeSessionApi(replies=[UploadReply(Outcome.RETRY, "down")] * 10)
+    recorder = _recorder(api, min_card_time=0, max_pending_images=2)
+    matches = [_match(name) for name in "ABC"]
+    for match in matches:
+        recorder.keep_cutout(match, _crop())
+    _shown(recorder, *matches)
+    assert recorder.images_pending == 2 and recorder.images_dropped == 1
+
+
+def test_close_reports_the_images_saved():
+    api = FakeSessionApi()
+    logs: list[str] = []
+    recorder = _recorder(api, logs, min_card_time=0)
+    match = _match()
+    recorder.keep_cutout(match, _crop())
+    _shown(recorder, match)
+    recorder.close()
+    assert "1 card(s), 1 image(s) and 0 paid call(s)" in logs[-1]

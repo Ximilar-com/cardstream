@@ -415,6 +415,10 @@ class SmartAnalyzer:
         thumbnail = thumbnail_data_url(crop_bgr)
         if thumbnail is not None:
             ident["thumbnail"] = thumbnail
+        if self._recorder is not None:
+            # The session row this match starts gets the crop as its image;
+            # it must be known before the history can see the match.
+            self._recorder.keep_cutout(ident, crop_bgr)
 
     def _snapshot(self) -> AnalysisResult:
         snap = self._core.snapshot()

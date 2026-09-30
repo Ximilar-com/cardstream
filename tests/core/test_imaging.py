@@ -14,6 +14,7 @@ from cardstream.core.imaging import (
     downscale,
     encode_jpeg,
     encode_jpeg_b64,
+    fit_long_edge,
     thumbnail_data_url,
     upscale_small,
 )
@@ -205,3 +206,10 @@ def test_thumbnail_never_upscales_and_skips_empty_images():
     thumb = decode_jpeg(base64.b64decode(url.split(",", 1)[1]))
     assert thumb.shape[:2] == (56, 40)
     assert thumbnail_data_url(np.zeros((0, 0, 3), np.uint8)) is None
+
+
+def test_fit_long_edge_shrinks_only_what_is_too_big():
+    big = make_frame(2000, 1500)
+    assert fit_long_edge(big, 1000).shape[:2] == (750, 1000)
+    small = make_frame(300, 200)
+    assert fit_long_edge(small, 1000) is small

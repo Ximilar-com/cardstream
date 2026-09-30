@@ -110,6 +110,7 @@ The defaults below are what a **bare invocation** actually uses. See
 | `--ximilar-stream`, `--ximilar_stream` | — | also save every identification to a session on the Ximilar platform, to review the show afterwards: NEW starts one (its id is printed), a session id resumes a live one. Uses the same API key; the account needs the cardstream service. Off by default — then the identify call is the only thing that leaves this machine |
 | `--ximilar-stream-name` | — | name of a NEW session (default: the game or card type, and the start time) |
 | `--ximilar-stream-platform` | `other` | where a NEW session is streamed; the review groups shows by it Choices: `whatnot`, `tiktok`, `ebay`, `fanatics`, `youtube`, `twitch`, `other`. |
+| `--ximilar-stream-images`, `--no-ximilar-stream-images` | `True` | also upload the crop each saved card was identified from (one image per card shown, not frames), to see it in the review (default); --no-ximilar-stream-images saves the text only |
 | `--ximilar-stream-keep-open` | off | leave the session live on exit so a restarted client can resume it with --ximilar-stream ID; by default a clean exit uploads what is left and closes the session |
 | `--ximilar-stream-url` | `https://api.ximilar.com/cardstream/v2` | base URL of the session API; change it only to point at a development backend |
 

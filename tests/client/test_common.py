@@ -499,6 +499,16 @@ def test_keep_open_leaves_the_session_live_on_exit(session_api):
     assert session_api.closed == []
 
 
+def test_the_session_uploads_row_images_unless_told_not_to(session_api):
+    pipeline = build_pipeline(_parse([*_BASE, "--ximilar-stream", "NEW"]))
+    assert pipeline.recorder._images is True
+    pipeline.close()
+    args = _parse([*_BASE, "--ximilar-stream", "NEW", "--no-ximilar-stream-images"])
+    pipeline = build_pipeline(args)
+    assert pipeline.recorder._images is False
+    pipeline.close()
+
+
 def test_the_session_url_is_configurable_for_a_dev_backend(session_api):
     url = "http://localhost:8000/api/cardstream/v2"
     args = _parse([*_BASE, "--ximilar-stream", "NEW", "--ximilar-stream-url", url])
@@ -519,6 +529,7 @@ def test_a_bad_session_value_is_a_usage_error(capsys):
         ["--ximilar-stream-platform", "tiktok"],
         ["--ximilar-stream-keep-open"],
         ["--ximilar-stream-url", "http://localhost:8000"],
+        ["--no-ximilar-stream-images"],
     ],
 )
 def test_session_flags_without_a_session_are_refused(session_api, extra):

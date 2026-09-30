@@ -3,8 +3,9 @@
 Off unless ``--ximilar-stream`` is passed: without it the identify call is
 still the only thing that leaves this machine. With it, the rows of the show's
 history (one per card shown, exactly as the page lists them, see
-:mod:`cardstream.core.show_history`) and the number of paid identify calls are
-ALSO saved to a session through the session API (``/cardstream/v2/`` on
+:mod:`cardstream.core.show_history`), the crop each row was identified from
+(unless ``--no-ximilar-stream-images``) and the number of paid identify calls
+are ALSO saved to a session through the session API (``/cardstream/v2/`` on
 api.ximilar.com, same API key), so the show can be reviewed afterwards — what
 was shown, when, for how long, how sure the match was and what it was worth.
 
@@ -13,16 +14,19 @@ Three pieces, each testable without a network:
 * :func:`session_item` — one history row as the upload item the API
   validates: renamed fields, text clipped to the API's limits, links reduced
   to plain text. One malformed field would reject the whole batch, so this is
-  where the payload is made safe, once. Images never leave the machine.
-* :class:`SessionApi` — the HTTP calls (create, get, upload, report calls,
-  close) and the one rule that sorts every reply into what happens next.
+  where the payload is made safe, once. Text only: a row's crop goes on its
+  own, once the row is saved.
+* :class:`SessionApi` — the HTTP calls (create, get, upload, upload an image,
+  report calls, close) and the one rule that sorts every reply into what
+  happens next.
 * :class:`SessionRecorder` — a queue of rows keyed by their ``event_id``,
   drained in batches by a background thread. A row re-sent with the same id
   is an update on the API's side (its duration and call count only grow), so
   a row that changes is simply queued again and a batch whose reply was lost
   is simply sent again. A network error, 429 or 5xx keeps the rows and backs
   off; a rejected batch (400) is dropped and logged; a closed, forbidden or
-  missing session stops the uploads — never the show.
+  missing session stops the uploads — never the show. A row's crop is held
+  until the row is saved, then uploaded once, the same way.
 """
 
 from __future__ import annotations
@@ -34,14 +38,17 @@ import threading
 import time
 import uuid
 import weakref
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import numpy as np
 import requests
 
 from cardstream.core.identify_client import DEFAULT_HTTP_TIMEOUT, auth_headers
+from cardstream.core.imaging import encode_jpeg_b64, fit_long_edge
 from cardstream.core.show_history import DEFAULT_MIN_CARD_TIME, HistoryRow, ShowHistory
 
 DEFAULT_SESSION_URL = "https://api.ximilar.com/cardstream/v2"
@@ -60,6 +67,16 @@ DEFAULT_FLUSH_SECONDS = 2.0
 MAX_BACKOFF_SECONDS = 60.0
 # How long a clean exit waits for the last uploads before giving up.
 DEFAULT_CLOSE_TIMEOUT = 10.0
+
+# A row's image: the crop it was identified from, no larger than the API keeps
+# it. Held only until it is uploaded; beyond MAX_PENDING_IMAGES (an outage) the
+# oldest go first, as with rows.
+CUTOUT_LONG_EDGE = 1024
+MAX_PENDING_IMAGES = 200
+# Crops of matches no row has claimed yet. Most never will be — merged into the
+# row of the same card, or shown for less than --min-card-time — so only the
+# latest few are kept.
+_MAX_UNCLAIMED = 16
 
 # CardstreamIdentification's column limits. A longer value is a 400 for the
 # whole batch, so it is clipped here rather than discovered there.
@@ -120,7 +137,7 @@ def session_item(
     seconds on stream and ``calls`` the paid calls behind the row. The two
     renames — ``set`` → ``set_name``, ``confidence_tier`` → ``confidence`` —
     are the API's names. Only declared fields are copied, so the page's
-    thumbnail never leaves the machine, and anything the API would reject is
+    thumbnail is never part of it, and anything the API would reject is
     dropped or clipped instead, because one bad field fails the whole batch.
     """
     item: dict[str, Any] = {
@@ -284,6 +301,21 @@ class SessionApi:
             )
         return _failure(response)
 
+    def upload_image(self, session_id: str, event_id: str, image: str) -> UploadReply:
+        """A saved row's crop, a base64 JPEG; the API keeps one per row."""
+        url = self.url("session", session_id, "images")
+        try:
+            response = self._send("POST", url, {"event_id": event_id, "image": image})
+        except requests.RequestException as exc:
+            return UploadReply(Outcome.RETRY, f"connection error: {exc}")
+        if response.ok:
+            return UploadReply(Outcome.STORED)
+        if response.status_code == 404:
+            # The row is gone (deleted on the platform during the show): only
+            # this image is lost. A deleted session stops the next row upload.
+            return UploadReply(Outcome.REJECTED, _detail(response))
+        return _failure(response)
+
     def report_calls(self, session_id: str, run: str, calls: int) -> UploadReply:
         """This run's paid identify calls so far; the API keeps each run's highest."""
         url = self.url("session", session_id, "calls")
@@ -339,11 +371,14 @@ class SessionRecorder:
     """Uploads a session's history rows and paid-call count in the background.
 
     Each analyzer gets its own :class:`ShowHistory` from :meth:`history` (the
-    rows of one stream) and counts its paid calls with :meth:`count_call`.
-    Neither touches the network nor raises, so the frame loop and the identify
-    thread are never held up by the API. Rows are queued by ``event_id``: a row
-    that changes before it went out replaces its queued version, and one that
-    changes after goes out again, which the API turns into an update.
+    rows of one stream), counts its paid calls with :meth:`count_call` and
+    hands over the crop of every match with :meth:`keep_cutout`. None of them
+    touches the network or raises, so the frame loop and the identify thread
+    are never held up by the API. Rows are queued by ``event_id``: a row that
+    changes before it went out replaces its queued version, and one that
+    changes after goes out again, which the API turns into an update. A row's
+    image is the crop of its first identification — the match the row shows —
+    uploaded once, after the row itself was saved.
 
     ``close`` closes the rows still on stream, drains the queue (retrying
     transient failures until ``timeout``), reports the final call count and then
@@ -359,8 +394,10 @@ class SessionRecorder:
         close_session: bool = True,
         min_card_time: float = DEFAULT_MIN_CARD_TIME,
         split_results: bool = False,
+        images: bool = True,
         flush_seconds: float = DEFAULT_FLUSH_SECONDS,
         max_pending: int = MAX_PENDING,
+        max_pending_images: int = MAX_PENDING_IMAGES,
         log: Callable[[str], None] = print,
         start: bool = True,
     ) -> None:
@@ -392,6 +429,15 @@ class SessionRecorder:
         self._reported_calls = 0
         self._saved: set[str] = set()  # event_ids the API has accepted
         self.dropped = 0  # row versions given up on: rejected, overflowed or stopped
+        self._images = images
+        self._max_pending_images = max_pending_images
+        # id(identification) -> (identification, base64 JPEG): crops no row has
+        # claimed yet. The identification is held so its id cannot be reused.
+        self._unclaimed: OrderedDict[int, tuple[dict[str, Any], str]] = OrderedDict()
+        # event_id -> base64 JPEG: a row's image, waiting for the row to be saved.
+        self._cutouts: dict[str, str] = {}
+        self._images_saved = 0
+        self.images_dropped = 0  # rejected, overflowed or stopped
         self._thread: threading.Thread | None = None
         if start:
             self._thread = threading.Thread(
@@ -420,6 +466,16 @@ class SessionRecorder:
         with self._lock:
             return self._paid_calls
 
+    @property
+    def images_pending(self) -> int:
+        with self._lock:
+            return len(self._cutouts)
+
+    @property
+    def images_saved(self) -> int:
+        with self._lock:
+            return self._images_saved
+
     def history(self, id_type: Callable[[], str]) -> ShowHistory:
         """A history for one analyzer's stream, whose rows this recorder saves."""
         history = ShowHistory(
@@ -432,8 +488,24 @@ class SessionRecorder:
             self._histories.add(history)
         return history
 
+    def keep_cutout(self, identification: dict[str, Any], crop_bgr: np.ndarray) -> None:
+        """The crop ``identification`` was made from — the image of the row it
+        starts, if it starts one. Call it before the match is published."""
+        if not self._images:
+            return
+        data = encode_jpeg_b64(fit_long_edge(crop_bgr, CUTOUT_LONG_EDGE))
+        if data is None:
+            return
+        with self._lock:
+            if self._closed or self._stopped is not None:
+                return
+            self._unclaimed[id(identification)] = (identification, data)
+            while len(self._unclaimed) > _MAX_UNCLAIMED:
+                self._unclaimed.popitem(last=False)
+
     def record_row(self, row: HistoryRow, duration: float) -> None:
         """Queue a new or changed history row (the ShowHistory callback)."""
+        self._claim_cutout(row)
         self.queue(
             session_item(
                 row.identification,
@@ -444,6 +516,25 @@ class SessionRecorder:
                 calls=row.calls,
             )
         )
+
+    def _claim_cutout(self, row: HistoryRow) -> None:
+        """A new row takes the crop of its identification as its image."""
+        with self._lock:
+            unclaimed = self._unclaimed.pop(id(row.identification), None)
+            if (
+                unclaimed is None
+                or unclaimed[0] is not row.identification
+                or self._closed
+                or self._stopped is not None
+            ):
+                return
+            if (
+                row.event_id not in self._cutouts
+                and len(self._cutouts) >= self._max_pending_images
+            ):
+                del self._cutouts[next(iter(self._cutouts))]
+                self.images_dropped += 1
+            self._cutouts[row.event_id] = unclaimed[1]
 
     def queue(self, item: dict[str, Any]) -> None:
         """Queue an upload item; a queued item with its event_id is replaced."""
@@ -476,7 +567,8 @@ class SessionRecorder:
                 self._paid_calls += 1
 
     def flush(self) -> bool:
-        """Upload every queued row, batch by batch, then the call count.
+        """Upload every queued row, batch by batch, then the images of saved
+        rows, then the call count.
 
         False means a transient failure left work queued (try again later);
         True means everything queued went out (rows that changed meanwhile go
@@ -505,7 +597,56 @@ class SessionRecorder:
                     )
                     return False
                 self._settle(batch, reply)
-            return self._report_calls()
+            images_done = self._upload_images()
+            if self._stopped is not None:
+                return True
+            return self._report_calls() and images_done
+
+    def _upload_images(self) -> bool:
+        """Upload the image of every saved row that has one, one request each."""
+        with self._lock:
+            ready = [
+                (event_id, data)
+                for event_id, data in self._cutouts.items()
+                if event_id in self._saved
+            ]
+        for event_id, data in ready:
+            with self._lock:
+                if self._stopped is not None:
+                    return True
+            reply = self._api.upload_image(self.session_id, event_id, data)
+            if reply.outcome is Outcome.RETRY:
+                self._log(
+                    f"[session] image upload failed ({reply.detail}) — keeping "
+                    f"{self.images_pending} image(s), retrying"
+                )
+                return False
+            with self._lock:
+                # Popped, not deleted: an overflow may have evicted it meanwhile.
+                self._cutouts.pop(event_id, None)
+                if reply.outcome is Outcome.STORED:
+                    self._images_saved += 1
+                    continue
+                self.images_dropped += 1
+                if reply.outcome is Outcome.STOPPED:
+                    self._stop_uploads(reply.detail)
+            if reply.outcome is Outcome.STOPPED:
+                self._log(
+                    f"[session] uploads stopped ({reply.detail}) — the show goes "
+                    "on, but nothing more is saved to the session"
+                )
+                return True
+            self._log(f"[session] image of a row rejected ({reply.detail}) — dropped")
+        return True
+
+    def _stop_uploads(self, detail: str) -> None:
+        """No upload can pass any more: drop everything queued. Holds the lock."""
+        self._stopped = detail
+        self.dropped += len(self._pending)
+        self._pending.clear()
+        self.images_dropped += len(self._cutouts)
+        self._cutouts.clear()
+        self._unclaimed.clear()
 
     def _report_calls(self) -> bool:
         with self._lock:
@@ -542,10 +683,13 @@ class SessionRecorder:
                 self._overflowing = False
                 return
             self.dropped += len(batch)
+            for event_id, _ in batch:
+                # A row the API never took has nowhere to put its image.
+                if event_id not in self._saved and event_id in self._cutouts:
+                    del self._cutouts[event_id]
+                    self.images_dropped += 1
             if reply.outcome is Outcome.STOPPED:
-                self._stopped = reply.detail
-                self.dropped += len(self._pending)
-                self._pending.clear()
+                self._stop_uploads(reply.detail)
         if reply.outcome is Outcome.STOPPED:
             self._log(
                 f"[session] uploads stopped ({reply.detail}) — the show goes on, "
@@ -598,9 +742,12 @@ class SessionRecorder:
 
         if self.pending:
             self._log(f"[session] {self.pending} row(s) could not be uploaded")
+        if self.images_pending:
+            self._log(f"[session] {self.images_pending} image(s) could not be uploaded")
+        images = f", {self.images_saved} image(s)" if self._images else ""
         summary = (
-            f"[session] {self.rows_saved} card(s) and {self._reported_calls} paid "
-            f"call(s) saved to {self.session_id}"
+            f"[session] {self.rows_saved} card(s){images} and "
+            f"{self._reported_calls} paid call(s) saved to {self.session_id}"
         )
         if self._stopped is not None:
             self._log(summary)

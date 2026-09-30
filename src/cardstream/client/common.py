@@ -517,6 +517,15 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         help="where a NEW session is streamed; the review groups shows by it",
     )
     session.add_argument(
+        "--ximilar-stream-images",
+        dest="ximilar_stream_images",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="also upload the crop each saved card was identified from (one "
+        "image per card shown, not frames), to see it in the review (default); "
+        "--no-ximilar-stream-images saves the text only",
+    )
+    session.add_argument(
         "--ximilar-stream-keep-open",
         dest="ximilar_stream_keep_open",
         action="store_true",
@@ -663,6 +672,8 @@ def _check_session_flags(args) -> None:
         extras["--ximilar-stream-platform"] = args.ximilar_stream_platform
     if getattr(args, "ximilar_stream_url", DEFAULT_SESSION_URL) != DEFAULT_SESSION_URL:
         extras["--ximilar-stream-url"] = args.ximilar_stream_url
+    if getattr(args, "ximilar_stream_images", True) is False:
+        extras["--no-ximilar-stream-images"] = True
     given = [flag for flag, value in extras.items() if value]
     if spec is None and given:
         raise ValueError(f"{given[0]} needs --ximilar-stream NEW|ID")
@@ -720,6 +731,7 @@ def _stream_session(
         close_session=not args.ximilar_stream_keep_open,
         min_card_time=getattr(args, "min_card_time", DEFAULT_MIN_CARD_TIME),
         split_results=getattr(args, "split_results", False),
+        images=getattr(args, "ximilar_stream_images", True),
     )
 
 
