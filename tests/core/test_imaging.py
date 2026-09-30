@@ -8,11 +8,13 @@ import pytest
 
 from _helpers import make_frame, textured_crop
 from cardstream.core.imaging import (
+    THUMBNAIL_LONG_EDGE,
     FramePair,
     decode_jpeg,
     downscale,
     encode_jpeg,
     encode_jpeg_b64,
+    thumbnail_data_url,
     upscale_small,
 )
 from cardstream.core.models import BoundingBox
@@ -184,3 +186,22 @@ def test_warp_needs_no_downscale_to_work():
 
 def test_warp_rejects_a_degenerate_quad():
     assert FramePair.from_frame(frame(1920, 1080), 960).warp(_quad(5, 5, 0, 0)) is None
+
+
+def test_thumbnail_is_a_small_jpeg_data_url():
+    import base64
+
+    url = thumbnail_data_url(make_frame(300, 420, fill=128))
+    assert url is not None and url.startswith("data:image/jpeg;base64,")
+    thumb = decode_jpeg(base64.b64decode(url.split(",", 1)[1]))
+    assert max(thumb.shape[:2]) == THUMBNAIL_LONG_EDGE
+    assert thumb.shape[:2] == (THUMBNAIL_LONG_EDGE, 80)  # aspect kept (420:300)
+
+
+def test_thumbnail_never_upscales_and_skips_empty_images():
+    url = thumbnail_data_url(make_frame(40, 56))
+    import base64
+
+    thumb = decode_jpeg(base64.b64decode(url.split(",", 1)[1]))
+    assert thumb.shape[:2] == (56, 40)
+    assert thumbnail_data_url(np.zeros((0, 0, 3), np.uint8)) is None

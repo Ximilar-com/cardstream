@@ -40,6 +40,30 @@ def encode_jpeg_b64(
     return base64.b64encode(data).decode("ascii") if data is not None else None
 
 
+# The page's history thumbnail: small enough to ride on every snapshot, still
+# sharp at its displayed size on a 2x screen.
+THUMBNAIL_LONG_EDGE = 112
+JPEG_QUALITY_THUMBNAIL = 75
+
+
+def thumbnail_data_url(
+    image_bgr: np.ndarray, long_edge: int = THUMBNAIL_LONG_EDGE
+) -> str | None:
+    """A small JPEG of ``image_bgr`` as a ``data:`` URL, or None.
+
+    Shrinks so the long edge is at most ``long_edge``; never upscales.
+    """
+    h, w = image_bgr.shape[:2]
+    if h == 0 or w == 0:
+        return None
+    scale = min(1.0, long_edge / max(h, w))
+    if scale < 1.0:
+        size = (max(1, round(w * scale)), max(1, round(h * scale)))
+        image_bgr = cv2.resize(image_bgr, size, interpolation=cv2.INTER_AREA)
+    b64 = encode_jpeg_b64(image_bgr, JPEG_QUALITY_THUMBNAIL)
+    return f"data:image/jpeg;base64,{b64}" if b64 is not None else None
+
+
 def decode_jpeg(data: bytes) -> np.ndarray | None:
     """Decode JPEG (or any cv2-supported format) bytes to a BGR frame.
 

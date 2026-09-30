@@ -1097,52 +1097,56 @@ def test_both_outlines_serialize_for_the_page(fake_embedder, fake_identify):
     json.dumps(d)
 
 
-# --- --ximilar-stream: kept matches are also recorded to the session ----------
+# --- --ximilar-stream: the history rows and paid calls go to the session ------
 
 
-def _session_recorder(api):
-    return SessionRecorder(api, SESSION_ID, start=False, log=lambda _: None)
+def _session_recorder(api, **kwargs):
+    return SessionRecorder(
+        api, SESSION_ID, start=False, log=lambda _: None, min_card_time=0, **kwargs
+    )
 
 
-def test_a_kept_match_is_recorded_with_its_type_and_time(
+def test_a_kept_match_becomes_a_history_row(
     fake_detector, fake_embedder, fake_identify
 ):
-    import time
-
     api = FakeSessionApi()
     recorder = _session_recorder(api)
     analyzer = make_analyzer(
         fake_detector, fake_embedder, fake_identify, recorder=recorder
     )
-    before = time.time()
     settle(analyzer, frames=10)
-    assert recorder.recorded == 1  # one paid call, one record
+    analyzer.finish()
     recorder.flush()
-    (item,) = api.uploads[0]
-    assert item["full_name"] == "Charizard"
-    assert item["set_name"] == "Base"
-    assert item["id_type"] == "tcg"
-    from datetime import datetime
+    rows = {item["event_id"]: item for batch in api.uploads for item in batch}
+    (row,) = rows.values()
+    assert row["full_name"] == "Charizard"
+    assert row["set_name"] == "Base"
+    assert row["id_type"] == "tcg"
+    assert row["calls"] == 1
+    assert row["duration"] >= 0
+    assert "thumbnail" not in row  # the page's, never the session's
+    assert api.reported == [(recorder.run_id, 1)]
 
-    assert datetime.fromisoformat(item["seen"]).timestamp() >= before - 1
 
-
-def test_the_category_recorded_is_the_one_the_call_was_made_with(
+def test_the_category_recorded_is_the_one_in_use(
     fake_detector, fake_embedder, fake_identify
 ):
-    recorder = _session_recorder(FakeSessionApi())
+    api = FakeSessionApi()
+    recorder = _session_recorder(api)
     fake_identify.options = fake_identify.options.with_(id_type="sport")
     analyzer = make_analyzer(
         fake_detector, fake_embedder, fake_identify, recorder=recorder
     )
     settle(analyzer, frames=10)
-    assert recorder._pending[0]["id_type"] == "sport"
+    recorder.flush()
+    assert api.uploads[0][0]["id_type"] == "sport"
 
 
-def test_dropped_and_missing_matches_are_not_recorded(
+def test_every_paid_call_counts_but_only_kept_matches_become_rows(
     fake_detector, fake_embedder, fake_identify
 ):
-    recorder = _session_recorder(FakeSessionApi())
+    api = FakeSessionApi()
+    recorder = _session_recorder(api)
     analyzer = make_analyzer(
         fake_detector,
         fake_embedder,
@@ -1152,9 +1156,31 @@ def test_dropped_and_missing_matches_are_not_recorded(
     )
     fake_identify.result = {"full_name": "Too far", "distance": 0.9}
     settle(analyzer, frames=10)
-    assert fake_identify.calls == 1 and recorder.recorded == 0
-
     fake_identify.result = None
     fake_embedder.embedding = unit_vec(1)  # a new card, which matches nothing
     settle(analyzer, frames=10)
-    assert fake_identify.calls == 2 and recorder.recorded == 0
+    recorder.flush()
+    assert fake_identify.calls == 2
+    assert recorder.paid_calls == 2
+    assert api.uploads == []  # nothing was shown, so nothing is listed
+    assert api.reported == [(recorder.run_id, 2)]
+
+
+def test_a_kept_match_carries_a_thumbnail_of_the_identified_crop(
+    fake_detector, fake_embedder, fake_identify
+):
+    shown = []
+    analyzer = make_analyzer(
+        fake_detector, fake_embedder, fake_identify, on_result=shown.append
+    )
+    settle(analyzer, frames=10)
+    (ident,) = shown
+    assert ident["thumbnail"].startswith("data:image/jpeg;base64,")
+
+
+def test_finish_without_a_session_is_harmless(
+    fake_detector, fake_embedder, fake_identify
+):
+    analyzer = make_analyzer(fake_detector, fake_embedder, fake_identify)
+    settle(analyzer)
+    analyzer.finish()

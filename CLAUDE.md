@@ -40,10 +40,11 @@ The state machine lives ONCE in `core/engine.py` (`DecisionCore` + `CallGuard`
 thread) — RF-DETR/RT-DETRv2 detection, MobileNetV2-embedding (or pHash) gate —
 and only one JPEG crop per distinct card leaves the machine, straight to
 Ximilar. **Everything runs locally; there is no service in the path.** The one
-opt-in exception is `--ximilar-stream`: each KEPT identification (text only)
-is also queued for a session on the Ximilar platform, so the show can be
-reviewed afterwards — off the frame loop and off the identify path's critical
-section, see `core/ximilar_session.py`.
+opt-in exception is `--ximilar-stream`: the show's history rows (one per card
+shown, exactly as the page lists them, text only) and the paid-call count are
+also queued for a session on the Ximilar platform, so the show can be reviewed
+afterwards — off the frame loop and off the identify path's critical section,
+see `core/show_history.py` and `core/ximilar_session.py`.
 
 ## Architecture
 
@@ -175,24 +176,44 @@ src/cardstream/
                      history row. overlay.js carries the JS twin, and
                      tests/core/test_prices.py + tests/webui/price-stats.test.js
                      run the same cases against both
-    ximilar_session.py  --ximilar-stream, requests only: session_item (the
-                     analyzer's identification dict -> the upload item the
-                     session API validates: set -> set_name,
-                     confidence_tier -> confidence, text clipped to the API's
-                     column limits, links reduced to text — ONE malformed field
-                     would 400 the whole batch, so it is made safe here, once),
-                     SessionApi (create / get / upload / close against
+    show_history.py  ShowHistory — the Python twin of the page's history list
+                     (overlay.js handleResult/_addHistory/_closeEntry/
+                     _resumeEntry/_revealIfEarned), fed with the same
+                     snapshots: one HistoryRow per card (card_key = the page's
+                     full_name|name|set|card_number), consecutive
+                     identifications of it merged, time on stream from when it
+                     APPEARED, summed over visits in merge mode, one row per
+                     appearance with split_results, nothing below
+                     min_card_time. Counts a paid call per NEW identification
+                     dict (each call returns a fresh one; snapshots hand the
+                     same one back). emit(row, duration) fires when a row earns
+                     its place and again when it changes or every
+                     refresh_seconds, always with the row's event_id.
+                     DEFAULT_MIN_CARD_TIME is the web flag's default. Stdlib
+                     only, clocks injectable
+    ximilar_session.py  --ximilar-stream, requests only: session_item (a
+                     history row -> the upload item the session API validates:
+                     set -> set_name, confidence_tier -> confidence, text
+                     clipped to the API's column limits, links reduced to text,
+                     + duration and calls; declared fields only, so the
+                     thumbnail never leaves — ONE malformed field would 400 the
+                     whole batch, so it is made safe here, once), SessionApi
+                     (create / get / upload / report_calls / close against
                      /cardstream/v2/, auth_headers shared with the identify
-                     call; every upload reply sorted into an Outcome: STORED,
-                     RETRY for network/429/5xx, REJECTED for a bad batch,
-                     STOPPED for 401/403/404/409), open_session (NEW creates,
-                     an id resumes a LIVE session only) and SessionRecorder —
-                     record() only queues (never the network, never raises, so
-                     the identify thread is not held up), a daemon thread
-                     flushes batches of <=500 with backoff, every item carries
-                     a random event_id the API dedupes on, so a lost reply is
-                     resent safely; close() drains with a timeout and closes
-                     the session unless --ximilar-stream-keep-open
+                     call; every reply sorted into an Outcome: STORED, RETRY
+                     for network/429/5xx, REJECTED for a bad batch, STOPPED for
+                     401/403/404/409), open_session (NEW creates, an id resumes
+                     a LIVE session only) and SessionRecorder — history() hands
+                     each analyzer its ShowHistory, count_call() counts paid
+                     calls; neither touches the network nor raises. Rows queue
+                     by event_id (a newer version replaces a queued one; one
+                     that changed while its batch was on the wire is kept and
+                     re-sent — the API turns a known event_id into an update
+                     that can only grow), a daemon thread flushes batches of
+                     <=500 with backoff, one pass per flush, then reports the
+                     run's call total (per-run id, so a resumed session adds
+                     up); close() finishes the open rows, drains with a timeout
+                     and closes the session unless --ximilar-stream-keep-open
     image_store.py   ImageStore — the --store-images folder: one file per PAID
                      call. --store-images-type picks the shape and the mode
                      lives HERE, so both call sites stay unconditional: `object`
@@ -209,6 +230,7 @@ src/cardstream/
                      save_b64 logs and returns None instead of raising, so a
                      full disk costs the archive, not the show
     imaging.py       encode_jpeg(_b64) / decode_jpeg / upscale_small / downscale;
+                     thumbnail_data_url (the history row's small JPEG);
                      FramePair (analysis frame for detect+gate, full frame for the
                      identify crop; .crop(bbox) rescales outward + owns its array,
                      .warp(quad) is its segmentation counterpart — same contract,
@@ -237,7 +259,11 @@ src/cardstream/
                      is what makes --segmentor pay off, and the ONE place
                      --detection-expansion is applied (so it changes what is
                      IDENTIFIED without touching what was LOCATED);
-                     stamps elapsed_ms on each identification for the UI, counts
+                     stamps elapsed_ms and a thumbnail of the identified crop
+                     (thumbnail_data_url) on each kept identification for the
+                     UI, feeds its ShowHistory every snapshot and the recorder
+                     every fired call under --ximilar-stream (finish() ends the
+                     row when a camera tab disconnects), counts
                      fired calls in .identify_calls (the page's "N calls" badge) and
                      takes result_threshold live from the settings dialog via
                      .tune(), which replaces the frozen config wholesale;
@@ -307,7 +333,9 @@ src/cardstream/
                      With --price-stats the card panel gets a price block and
                      each history row a price line (renderPriceStats /
                      formatPriceStats — the JS twin of core/prices.py).
-                     Plus history rows timing each card's stay, reappearances
+                     Plus history rows, each led by the thumbnail of the crop
+                     that was identified (id.thumbnail, the row's first
+                     identification), timing each card's stay, reappearances
                      resume the row unless --split-results. A row is BUILT on
                      identification but held out of the DOM until the card has
                      been on stream --min-card-time (_revealIfEarned, called
@@ -629,15 +657,18 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   defaults there) and do not expose it to a LAN.
 - **`--listen` / `--ffmpeg` need the system ffmpeg binary** (brew install
   ffmpeg); plain pulls work with pip-only installs.
-- **`--ximilar-stream` records identifications, not appearances.** A session
-  gets one record per KEPT paid match, stamped when the call fired; how long
-  the card stayed on stream lives only in the page's history row. Its log
-  lines go to stdout (the recorder's `log` defaults to print), not to the
-  page's debug panel, and camera mode's per-connection analyzers all record
-  into the one session the process opened. The session is opened LAST in
-  build_pipeline so a run that dies on a model path leaves no empty session
-  behind; a closed session cannot be resumed, hence
-  `--ximilar-stream-keep-open` for a planned restart.
+- **`--ximilar-stream` records the page's history, twice implemented.** The
+  rows come from `core/show_history.py`, a Python twin of overlay.js's history
+  logic fed with the same snapshots, not from the page itself (the headless
+  client has no page). Change the merge key, the timing or the reveal rule in
+  one and the other must follow. Timings differ by at most a frame: the page
+  sees an identification the moment the result is pushed, the twin at the
+  next snapshot. Log lines go to stdout (the recorder's `log` defaults to
+  print), not to the page's debug panel; camera mode's per-connection
+  analyzers each keep their own history but share the one session the process
+  opened. The session is opened LAST in build_pipeline so a run that dies on a
+  model path leaves no empty session behind; a closed session cannot be
+  resumed, hence `--ximilar-stream-keep-open` for a planned restart.
 - **`model/` is gitignored except its README** (weights + training artifacts,
   ~250 MB for the segmentor alone). The subfolders only exist once you put
   weights in them, and `scripts/install.sh` + the Docker image do NOT use this

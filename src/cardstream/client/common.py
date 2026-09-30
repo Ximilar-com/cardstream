@@ -32,6 +32,7 @@ from cardstream.core.id_types import ALPHABETS, ID_TYPES
 from cardstream.core.identify_options import IdentifyOptions
 from cardstream.core.image_store import FRAME, OBJECT, STORE_TYPES, ImageStore
 from cardstream.core.prices import price_summary
+from cardstream.core.show_history import DEFAULT_MIN_CARD_TIME
 from cardstream.core.tracking import make_tracker
 from cardstream.core.ximilar_session import (
     DEFAULT_PLATFORM,
@@ -710,8 +711,15 @@ def _stream_session(
         f"[session] {verb} {session.get('name') or 'session'} ({session_id}) — "
         f"review at {api.url('session', session_id, 'summary')}"
     )
+    # The session keeps the rows the page lists, so the page's own rules
+    # apply: --min-card-time and --split-results (web flags; the headless
+    # client has the page's defaults).
     return SessionRecorder(
-        api, session_id, close_session=not args.ximilar_stream_keep_open
+        api,
+        session_id,
+        close_session=not args.ximilar_stream_keep_open,
+        min_card_time=getattr(args, "min_card_time", DEFAULT_MIN_CARD_TIME),
+        split_results=getattr(args, "split_results", False),
     )
 
 

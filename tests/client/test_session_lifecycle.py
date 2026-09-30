@@ -24,7 +24,9 @@ from cardstream.core.ximilar_session import SessionRecorder
 def session_pipeline(monkeypatch):
     """A pipeline of fakes whose session records to a FakeSessionApi."""
     api = FakeSessionApi()
-    recorder = SessionRecorder(api, SESSION_ID, start=False, log=lambda _: None)
+    recorder = SessionRecorder(
+        api, SESSION_ID, start=False, log=lambda _: None, min_card_time=0
+    )
     pipeline = Pipeline(
         detector=FakeDetector(),
         embedder=None,
@@ -49,7 +51,9 @@ def test_ctrl_c_in_the_headless_client_closes_the_session(
     monkeypatch.setattr(stream_client, "build_pipeline", lambda args: pipeline)
 
     def interrupted(analyzer, *args):
-        pipeline.recorder.record({"full_name": "Charizard"}, "tcg")
+        # A card on stream when Ctrl-C lands: close() must still save it.
+        history = pipeline.recorder.history(lambda: "tcg")
+        history.observe("identified", {"full_name": "Charizard"}, now=0.0)
         raise KeyboardInterrupt
 
     monkeypatch.setattr(stream_client, "_run_still_image", interrupted)

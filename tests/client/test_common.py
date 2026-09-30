@@ -549,3 +549,23 @@ def test_a_failed_model_load_leaves_no_session_behind(session_api, monkeypatch):
     with pytest.raises(RuntimeError):
         build_pipeline(_parse([*_BASE, "--ximilar-stream", "NEW"]))
     assert session_api.created == []
+
+
+def test_the_session_keeps_the_pages_rules(session_api):
+    """The session saves the rows the page lists, so the page's flags apply."""
+    args = _parse([*_BASE, "--ximilar-stream", "NEW"])
+    args.min_card_time = 2.5  # web flags; the headless parser has neither
+    args.split_results = True
+    pipeline = build_pipeline(args)
+    history = pipeline.recorder.history(lambda: "tcg")
+    assert (history._min_card_time, history._split) == (2.5, True)
+    pipeline.close()
+
+
+def test_the_headless_session_uses_the_pages_defaults(session_api):
+    from cardstream.core.show_history import DEFAULT_MIN_CARD_TIME
+
+    pipeline = build_pipeline(_parse([*_BASE, "--ximilar-stream", "NEW"]))
+    history = pipeline.recorder.history(lambda: "tcg")
+    assert (history._min_card_time, history._split) == (DEFAULT_MIN_CARD_TIME, False)
+    pipeline.close()

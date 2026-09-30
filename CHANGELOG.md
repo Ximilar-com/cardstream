@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--ximilar-stream-name`, `--ximilar-stream-platform`,
   `--ximilar-stream-keep-open` and `--ximilar-stream-url`. See
   `docs/sessions.md`.
+- The session keeps the page's history: one row per card shown, consecutive
+  identifications of the same card merged, with its time on stream and the
+  paid calls behind it, and `--min-card-time` / `--split-results` applied as
+  on the page. A row is updated in place while its card stays on stream. The
+  session also records every paid identify call, matched or not.
+- Every history row on the page now shows a small thumbnail of the crop that
+  was identified; the right panel is wider to fit it. Thumbnails stay local.
 
 ## [0.3.0] - 2026-09-03
 

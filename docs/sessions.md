@@ -2,9 +2,10 @@
 
 By default nothing is kept: the history on the page is gone when the tab
 closes, and the identify call is the only thing that leaves your machine.
-`--ximilar-stream` opts in to one more thing. Every identification is also
-saved to a **session** on the Ximilar platform, so you can come back after the
-show and see what was shown, when, how sure each match was and what it was
+`--ximilar-stream` opts in to one more thing. The show's history, exactly as
+the page lists it, and the number of paid identify calls are also saved to a
+**session** on the Ximilar platform. You can come back after the show and see
+what was shown, when, for how long, how sure each match was and what it was
 worth.
 
 ```bash
@@ -21,7 +22,7 @@ On a clean exit (Ctrl-C) it uploads whatever is still queued and closes the
 session:
 
 ```
-[session] 212 identification(s) saved to 0b7c9a52-… — session closed
+[session] 212 card(s) and 230 paid call(s) saved to 0b7c9a52-… — session closed
 ```
 
 ## Requirements
@@ -52,40 +53,57 @@ show (to change a flag the settings dialog does not cover), run with
 
 ## What is sent
 
-One record per identification that survives `--result-threshold`: exactly the
-matches the page shows. For each record:
+**One row per card shown, exactly as the page's history lists it.** The same
+card identified again while it stays on stream, or brought back before a
+different card appears, stays one row: its time on stream keeps adding up and
+the paid calls behind it are counted. A card shown for less than
+`--min-card-time` gets no row, on the page or in the session. With
+`--split-results` every appearance is its own row. For each row:
 
-- **When:** the time the identify call fired.
+- **When:** when the card appeared, and how long it was on stream in total.
+- **Calls:** how many paid identify calls matched it. 0 is possible with
+  `--split-results`, when a returning card is shown from memory.
 - **Card:** the category (`tcg`, `sport`, `slab`, `comics`), name, full name,
   set name and code, card number, series, year and subcategory.
 - **Match:** the match distance and confidence tier, the links and up to four
-  alternatives.
+  alternatives, all from the row's first identification.
 - **Prices:** the price statistics, when `--price-stats` is on. The platform
   derives a representative price from them.
+
+A row is sent as soon as it earns its place in the list. It is sent again,
+under the same id, when the card leaves or comes back, and every ten seconds
+while it stays, so the session updates the row rather than adding one.
+
+**The number of paid identify calls**, matched or not: the page's "N calls"
+badge. Each run of the client reports its own total, so a resumed session adds
+the new run's calls to the earlier ones.
 
 At the start, the session is described by its name, game, platform and the
 client's settings (version, card type, set code, alphabet and whether prices
 are on).
 
-What is **not** sent: images, frames or video, anything from the platform you
-stream on (buyers, sales, chat), and matches the result threshold dropped.
+What is **not** sent: images, frames or video (the history thumbnails stay on
+the page), anything from the platform you stream on (buyers, sales, chat), and
+matches the result threshold dropped.
 
 ## When the network misbehaves
 
-Recording never blocks the show. Identifications go into a queue that a
-background thread uploads in batches every few seconds.
+Recording never blocks the show. Rows go into a queue that a background
+thread uploads in batches every few seconds.
 
 - **Network errors, rate limits and server errors** keep the queue and retry
-  with a growing pause. Every record carries a random id, and the platform
-  skips ids it already has, so a batch whose reply was lost is simply sent
-  again without creating duplicates.
-- **A long outage:** the queue holds the most recent 5000 identifications and
-  drops the oldest beyond that.
+  with a growing pause. Every row carries a random id, and the platform treats
+  a known id as an update that can only make the row longer, so a batch whose
+  reply was lost is simply sent again without creating duplicates.
+- **A long outage:** the queue holds the most recent 5000 rows and drops the
+  oldest beyond that. A row that changes while queued is sent once, in its
+  latest state.
 - **A rejected batch** (malformed data) is dropped and logged.
 - **A session that is closed, missing or forbidden** stops the uploads for the
   rest of the run. The show itself carries on.
-- **On exit** the client waits up to ten seconds for the last uploads, then
-  reports anything it could not save.
+- **On exit** the card still on stream gets its final time, then the client
+  waits up to ten seconds for the last uploads and reports anything it could
+  not save.
 
 ## Reviewing a session
 
@@ -100,18 +118,18 @@ curl -H "Authorization: Token $XIMILAR_API_KEY" \
   https://api.ximilar.com/cardstream/v2/session/
 ```
 
-- **The summary** has the number of identifications and of distinct cards, the
-  confidence breakdown, the priced total, when the first and last card were
-  seen, the most valuable cards and the most frequent sets.
-- **The identification list** has every record in the order the cards were
-  seen.
+- **The summary** has the number of cards shown and of distinct cards, the
+  paid calls, the total time on stream, the confidence breakdown, the priced
+  total, when the first and last card were seen, the most valuable cards and
+  the most frequent sets.
+- **The identification list** has every row in the order the cards were
+  shown, with each card's time on stream and calls.
 - **The session list** has all your sessions.
 
 ## Limitations
 
-- **How long a card stayed on stream is not recorded.** The history row on the
-  page times it; the session has the moment it was identified.
 - **Messages go to the terminal only.** Session messages go to standard
   output, not to the page's debug panel.
 - **Every browser tab shares one session.** In camera mode every connected
-  tab analyses its own frames, but they all save to the same session.
+  tab analyses its own frames and keeps its own history, but they all save to
+  the same session. A tab that disconnects ends the row of the card it showed.

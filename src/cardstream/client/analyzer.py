@@ -34,10 +34,11 @@ from cardstream.core.engine import (
     PhashGate,
 )
 from cardstream.core.image_store import ImageStore
-from cardstream.core.imaging import FramePair
+from cardstream.core.imaging import FramePair, thumbnail_data_url
 from cardstream.core.models import AnalysisResult, BoundingBox, DetectionResult
 from cardstream.core.motion import MotionGate
 from cardstream.core.quad import expand_quad, paid_quad
+from cardstream.core.show_history import ShowHistory
 from cardstream.core.tracking import ObjectTracker, make_tracker
 from cardstream.core.ximilar_session import SessionRecorder
 
@@ -132,10 +133,16 @@ class SmartAnalyzer:
         # crop, so the whole picture has to be kept from here. In `object` mode
         # save_frame is a no-op and the identify client does the keeping.
         self._store = store
-        # --ximilar-stream: every KEPT match is also queued for the session.
-        # Queued, not sent — record() never touches the network, so the
-        # identify thread is not held up by the session API.
+        # --ximilar-stream: this stream's history rows (one per card shown, as
+        # the page lists them) and its paid calls go to the session. Queued,
+        # not sent — nothing here touches the network, so neither the frame
+        # loop nor the identify thread is held up by the session API.
         self._recorder = recorder
+        self._history: ShowHistory | None = (
+            recorder.history(lambda: self._identify_client.options.id_type.key)
+            if recorder is not None
+            else None
+        )
         self._cfg = cfg
         # Paid identify calls this analyzer has fired — the point of the whole
         # state machine, so the UI shows it. Counted on fire, not on success:
@@ -251,7 +258,16 @@ class SmartAnalyzer:
         if self._core.on_frame(settled, score, now):
             self._detect_tick(pair, settled, now)
 
-        return self._snapshot()
+        snapshot = self._snapshot()
+        if self._history is not None:
+            self._history.observe(snapshot.state, snapshot.identification)
+        return snapshot
+
+    def finish(self) -> None:
+        """The stream this analyzer watched has ended (e.g. its browser tab
+        closed): the card in frame leaves the session's history with it."""
+        if self._history is not None:
+            self._history.finish()
 
     def _detect_tick(self, pair: FramePair, settled: bool, now: float) -> None:
         """One detection: run it, judge it, and pay for it if the core says so."""
@@ -359,11 +375,8 @@ class SmartAnalyzer:
         ident = None
         self.identify_calls += 1
         started = time.monotonic()
-        # When the card was seen, for the session record: the moment the call
-        # fired, not when it came back. The category is read now too — the
-        # settings dialog may switch it while the call is in flight.
-        seen = time.time()
-        id_type = self._identify_client.options.id_type.key
+        if self._recorder is not None:
+            self._recorder.count_call()  # paid on fire, matched or not
         try:
             ident = self._identify_client.identify(crop_bgr)
             if ident is not None:
@@ -389,8 +402,11 @@ class SmartAnalyzer:
         # Wall time of the whole identify call (network included) — the UI
         # shows it next to the distance.
         ident["elapsed_ms"] = int((time.monotonic() - started) * 1000)
-        if self._recorder is not None:
-            self._recorder.record(ident, id_type, seen)
+        # What was actually identified, small, for the page's history row.
+        # Page-only: the session upload copies declared fields, never this.
+        thumbnail = thumbnail_data_url(crop_bgr)
+        if thumbnail is not None:
+            ident["thumbnail"] = thumbnail
         if self._on_result is not None:
             self._on_result(ident)
 

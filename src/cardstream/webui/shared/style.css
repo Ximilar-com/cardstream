@@ -116,7 +116,7 @@ main {
   flex: 1;
   min-height: 0;  /* let the grid row shrink below its content's natural size */
   display: grid;
-  grid-template-columns: 1fr 340px;
+  grid-template-columns: 1fr 420px;
   gap: 1rem;
   padding: 1rem 1.25rem;
 }
@@ -204,20 +204,33 @@ details ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 #history { list-style: none; margin: 0; padding: 0; }
 #history li {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  /* thumbnail | time | tier | name | duration; meta and price wrap under the name */
+  grid-template-columns: 40px auto auto 1fr auto;
   align-items: baseline;
   column-gap: 0.5rem;
   padding: 0.35rem 0;
   border-bottom: 1px solid var(--line);
 }
 #history li:last-child { border-bottom: none; }
-.h-time { color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
-.h-tier { font-size: 0.6rem; padding: 0.1rem 0.4rem; }
-.h-name { font-size: 0.85rem; font-weight: 600; }
-.h-meta { grid-column: 3 / -1; color: var(--muted); font-size: 0.75rem; }
+/* The crop that was identified. Placed explicitly, so a row without one keeps
+   the same columns as the rows around it. */
+.h-thumb {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  align-self: start;
+  width: 40px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--stage-bg);
+}
+.h-time { grid-column: 2; color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.h-tier { grid-column: 3; font-size: 0.6rem; padding: 0.1rem 0.4rem; }
+.h-name { grid-column: 4; font-size: 0.85rem; font-weight: 600; }
+.h-meta { grid-column: 4 / -1; color: var(--muted); font-size: 0.75rem; }
 /* How long the card stayed in frame — ticks while it is there, then freezes. */
 .h-dur {
-  grid-column: 4;
+  grid-column: 5;
   color: var(--muted);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
@@ -225,7 +238,7 @@ details ul { margin: 0.5rem 0 0; padding-left: 1.1rem; }
 }
 .h-dur.live { color: var(--accent); }
 /* The price summary, a line under the meta — only with --price-stats. */
-.h-price { grid-column: 3 / -1; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.h-price { grid-column: 4 / -1; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 
 /* Scoped to the footer: it styles ONE button (#toggle). Left bare, every
    other button on the page had to undo it. */

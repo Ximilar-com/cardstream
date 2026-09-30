@@ -319,9 +319,11 @@ class FakeSessionApi:
 
     base_url = "https://api.test/cardstream/v2"
 
-    def __init__(self, replies=(), status: str = "live") -> None:
+    def __init__(self, replies=(), status: str = "live", call_replies=()) -> None:
         self.replies = list(replies)
+        self.call_replies = list(call_replies)
         self.status = status
+        self.reported: list[tuple[str, int]] = []
         self.created: list[dict] = []
         self.fetched: list[str] = []
         self.uploads: list[list[dict]] = []
@@ -344,6 +346,12 @@ class FakeSessionApi:
         if self.replies:
             return self.replies.pop(0)
         return UploadReply(Outcome.STORED, created=len(items))
+
+    def report_calls(self, session_id: str, run: str, calls: int) -> UploadReply:
+        self.reported.append((run, calls))
+        if self.call_replies:
+            return self.call_replies.pop(0)
+        return UploadReply(Outcome.STORED)
 
     def close(self, session_id: str) -> str | None:
         self.closed.append(session_id)

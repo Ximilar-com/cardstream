@@ -276,6 +276,15 @@ export class Overlay {
     this._closeEntry();
 
     const li = document.createElement("li");
+    // What was actually cut from the frame and identified, when the process
+    // sent it: the row's first identification, like the rest of the row.
+    if (id.thumbnail) {
+      const thumb = document.createElement("img");
+      thumb.className = "h-thumb";
+      thumb.src = id.thumbnail;
+      thumb.alt = "";
+      li.append(thumb);
+    }
     const time = document.createElement("span");
     time.className = "h-time";
     time.textContent = new Date().toLocaleTimeString([], { hour12: false });

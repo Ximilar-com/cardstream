@@ -130,3 +130,5 @@ def add_camera_ws(app, make_analyzer, debug: bool) -> None:
             pass
         finally:
             reader_task.cancel()
+            # The tab is gone: so is the card it was showing, in the session too.
+            analyzer.finish()

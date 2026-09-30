@@ -51,6 +51,7 @@ from cardstream.client.web_common import (
 )
 from cardstream.client.web_settings import AnalyzerRegistry, add_settings_routes
 from cardstream.client.web_stream import StreamPump
+from cardstream.core.show_history import DEFAULT_MIN_CARD_TIME
 
 # Durations. Negative would silently mean "never", which is what 0 already says.
 _seconds = bounded_float(
@@ -66,7 +67,7 @@ def create_web_app(
     show_detection: bool = False,
     result_threshold: float | None = None,
     split_results: bool = False,
-    min_card_time: float = 1.0,
+    min_card_time: float = DEFAULT_MIN_CARD_TIME,
     analysis_width: int = DEFAULT_ANALYSIS_WIDTH,
     camera_width: int = 1920,
     send_width: int = 1920,
@@ -199,7 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--min_card_time",
         dest="min_card_time",
         type=_seconds,
-        default=1.0,
+        default=DEFAULT_MIN_CARD_TIME,
         metavar="SECONDS",
         help="keep a card out of the history list until it has been "
         "on stream this long (default 1.0, 0 = list every card). "
