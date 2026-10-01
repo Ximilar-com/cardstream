@@ -417,8 +417,9 @@ def session_api(monkeypatch):
     api = FakeSessionApi()
     built = {}
 
-    def factory(api_key, base_url):
-        built.update(api_key=api_key, base_url=base_url)
+    def factory(api_key, base_url, workspace=None):
+        built.update(api_key=api_key, base_url=base_url, workspace=workspace)
+        api.workspace = workspace
         return api
 
     monkeypatch.setattr(common, "SessionApi", factory)
@@ -465,6 +466,7 @@ def test_new_starts_a_session_described_by_the_run(session_api, capsys):
         assert session_api.built == {
             "api_key": "k",
             "base_url": "https://api.ximilar.com/cardstream/v2",
+            "workspace": None,
         }
         assert f"[session {SESSION_ID}]" in pipeline.description
         out = capsys.readouterr().out
@@ -516,6 +518,28 @@ def test_the_session_url_is_configurable_for_a_dev_backend(session_api):
     assert session_api.built["base_url"] == url
 
 
+def test_the_session_can_be_saved_in_a_workspace(session_api, capsys):
+    workspace = "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5"
+    args = _parse(
+        [
+            *_BASE,
+            "--ximilar-stream",
+            SESSION_ID,
+            "--ximilar-workspace",
+            workspace.upper(),
+        ]
+    )
+    build_pipeline(args).close()
+    assert session_api.built["workspace"] == workspace
+    assert f"in workspace {workspace}" in capsys.readouterr().out
+
+
+def test_a_bad_workspace_is_a_usage_error(capsys):
+    with pytest.raises(SystemExit):
+        _parse([*_BASE, "--ximilar-stream", "NEW", "--ximilar-workspace", "mine"])
+    assert "is not a workspace id" in capsys.readouterr().err
+
+
 def test_a_bad_session_value_is_a_usage_error(capsys):
     with pytest.raises(SystemExit):
         _parse([*_BASE, "--ximilar-stream", "latest"])
@@ -530,6 +554,7 @@ def test_a_bad_session_value_is_a_usage_error(capsys):
         ["--ximilar-stream-keep-open"],
         ["--ximilar-stream-url", "http://localhost:8000"],
         ["--no-ximilar-stream-images"],
+        ["--ximilar-workspace", "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5"],
     ],
 )
 def test_session_flags_without_a_session_are_refused(session_api, extra):

@@ -8,6 +8,8 @@ history (one per card shown, exactly as the page lists them, see
 are ALSO saved to a session through the session API (``/cardstream/v2/`` on
 api.ximilar.com, same API key), so the show can be reviewed afterwards — what
 was shown, when, for how long, how sure the match was and what it was worth.
+The session lives in the API key's default workspace, or in the one
+``--ximilar-workspace`` names (sent as ``?workspace=`` on every call).
 
 Three pieces, each testable without a network:
 
@@ -112,6 +114,14 @@ def parse_session_spec(value: str) -> str:
         raise ValueError(
             f"{value!r} is neither {NEW_SESSION} nor a session id"
         ) from None
+
+
+def parse_workspace_id(value: str) -> str:
+    """A workspace id, canonicalised; ValueError otherwise."""
+    try:
+        return str(uuid.UUID(value.strip()))
+    except ValueError:
+        raise ValueError(f"{value!r} is not a workspace id") from None
 
 
 def _text(value: object, limit: int) -> str:
@@ -237,6 +247,7 @@ class SessionApi:
         api_key: str,
         base_url: str = DEFAULT_SESSION_URL,
         timeout: float = DEFAULT_HTTP_TIMEOUT,
+        workspace: str | None = None,
     ) -> None:
         if not api_key:
             raise SessionError(
@@ -246,6 +257,10 @@ class SessionApi:
         self._headers = auth_headers(api_key)
         self.base_url = base_url.rstrip("/")
         self._timeout = timeout
+        # Every call names the workspace, or none: the API key's default one.
+        # A session of another workspace is not found without it.
+        self.workspace = workspace
+        self._params = {"workspace": workspace} if workspace else None
 
     def url(self, *parts: str) -> str:
         return "/".join([self.base_url, *parts]) + "/"
@@ -254,7 +269,12 @@ class SessionApi:
         self, method: str, url: str, payload: dict[str, Any] | None = None
     ) -> requests.Response:
         return requests.request(
-            method, url, json=payload, headers=self._headers, timeout=self._timeout
+            method,
+            url,
+            params=self._params,
+            json=payload,
+            headers=self._headers,
+            timeout=self._timeout,
         )
 
     def _session(

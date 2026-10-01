@@ -112,6 +112,7 @@ The defaults below are what a **bare invocation** actually uses. See
 | `--ximilar-stream-platform` | `other` | where a NEW session is streamed; the review groups shows by it Choices: `whatnot`, `tiktok`, `ebay`, `fanatics`, `youtube`, `twitch`, `other`. |
 | `--ximilar-stream-images`, `--no-ximilar-stream-images` | `True` | also upload the crop each saved card was identified from (one image per card shown, not frames), to see it in the review (default); --no-ximilar-stream-images saves the text only |
 | `--ximilar-stream-keep-open` | off | leave the session live on exit, as a show that is not over yet; by default a clean exit uploads what is left and closes the session (--ximilar-stream ID reopens it either way) |
+| `--ximilar-workspace` | — | the Ximilar workspace the session is saved in (its id, shown in the Ximilar app); needed to resume a session of that workspace. Default: the API key's default workspace |
 | `--ximilar-stream-url` | `https://api.ximilar.com/cardstream/v2` | base URL of the session API; change it only to point at a development backend |
 
 ---

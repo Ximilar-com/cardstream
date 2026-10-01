@@ -201,7 +201,8 @@ src/cardstream/
                      along — ONE malformed field would 400 the whole batch,
                      so it is made safe here, once), SessionApi (create / get
                      / upload / upload_image / report_calls / close against
-                     /cardstream/v2/, auth_headers shared with the identify
+                     /cardstream/v2/, every call with ?workspace= when
+                     --ximilar-workspace is given, auth_headers shared with the identify
                      call; every reply sorted into an Outcome: STORED, RETRY
                      for network/429/5xx, REJECTED for a bad batch, STOPPED
                      for 401/403/404/409 — except upload_image's 404,

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--ximilar-workspace ID`: save the `--ximilar-stream` session in that
+  workspace instead of the API key's default one (sent as `?workspace=` on
+  every session call). Also what resumes a session of that workspace.
+
 ## [0.4.0] - 2026-10-01
 
 ### Added

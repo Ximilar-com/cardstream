@@ -28,7 +28,8 @@ session:
 ## Requirements
 
 - The same `XIMILAR_API_KEY` the identify call uses. The session belongs to
-  that key's account (its default workspace).
+  that key's account: its default workspace, or the workspace
+  `--ximilar-workspace` names.
 - That account needs the **cardstream** service. Without it, the start fails
   with the API's own explanation, before the show begins.
 
@@ -42,6 +43,7 @@ session:
 | `--ximilar-stream-platform` | where the show streams: `whatnot`, `tiktok`, `ebay`, `fanatics`, `youtube`, `twitch` or `other` |
 | `--no-ximilar-stream-images` | save the rows as text only, without the crop of each card |
 | `--ximilar-stream-keep-open` | leave the session live on exit, as a show that is not over yet |
+| `--ximilar-workspace ID` | save the session in this workspace instead of the API key's default one; also needed to resume a session of that workspace |
 | `--ximilar-stream-url URL` | the session API base URL, only for a development backend |
 
 The name and platform describe a **new** session; passing them with an ID is
@@ -53,6 +55,10 @@ with `--ximilar-stream ID` reopens it and the show goes on in the same session
 (the session page on the Ximilar platform shows this command as "Continue this
 show"). Only starting a session is billed, so reopening it costs nothing. With
 `--ximilar-stream-keep-open` the session simply stays live between runs.
+
+A session lives in one workspace. Without `--ximilar-workspace` that is the
+API key's default workspace; pass the same `--ximilar-workspace ID` when
+resuming a session saved in another one, or it is not found.
 
 ## What is sent
 

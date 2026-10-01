@@ -24,6 +24,7 @@ from cardstream.core.ximilar_session import (
     UploadReply,
     open_session,
     parse_session_spec,
+    parse_workspace_id,
     session_item,
 )
 
@@ -127,6 +128,19 @@ def test_anything_else_is_refused(value):
         parse_session_spec(value)
 
 
+WORKSPACE_ID = "6f1c2d3e-4b5a-4c6d-8e7f-90a1b2c3d4e5"
+
+
+def test_a_workspace_id_is_canonicalised():
+    assert parse_workspace_id(f" {WORKSPACE_ID.upper()} ") == WORKSPACE_ID
+
+
+@pytest.mark.parametrize("value", ["", "default", "1234"])
+def test_anything_but_a_workspace_id_is_refused(value):
+    with pytest.raises(ValueError, match="is not a workspace id"):
+        parse_workspace_id(value)
+
+
 # --- starting or resuming ---------------------------------------------------------
 
 
@@ -203,8 +217,16 @@ def http(monkeypatch):
     calls: list[dict] = []
     replies: list[object] = []
 
-    def fake_request(method, url, json=None, headers=None, timeout=None):
-        calls.append({"method": method, "url": url, "json": json, "headers": headers})
+    def fake_request(method, url, params=None, json=None, headers=None, timeout=None):
+        calls.append(
+            {
+                "method": method,
+                "url": url,
+                "params": params,
+                "json": json,
+                "headers": headers,
+            }
+        )
         reply = replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
@@ -240,6 +262,39 @@ def test_reopen_posts_to_the_reopen_endpoint(http):
         "POST",
         f"http://localhost:8000/api/cardstream/v2/session/{SESSION_ID}/reopen/",
     )
+
+
+def test_every_call_names_the_workspace(http):
+    calls, replies = http
+    session = {"id": SESSION_ID, "status": "live"}
+    replies.extend(
+        [
+            _Response(201, session),
+            _Response(200, session),
+            _Response(200, session),
+            _Response(201, {"created": 1, "duplicates": 0}),
+            _Response(200, {"id": "row"}),
+            _Response(200, {"paid_calls": 1}),
+            _Response(200, session),
+        ]
+    )
+    api = SessionApi("key", workspace=WORKSPACE_ID)
+    api.create({"name": "Show"})
+    api.get(SESSION_ID)
+    api.reopen(SESSION_ID)
+    api.upload(SESSION_ID, [{"event_id": "e"}])
+    api.upload_image(SESSION_ID, "e", "AAAA")
+    api.report_calls(SESSION_ID, "run", 1)
+    api.close(SESSION_ID)
+    assert len(calls) == 7
+    assert all(call["params"] == {"workspace": WORKSPACE_ID} for call in calls)
+
+
+def test_without_a_workspace_the_api_keys_default_is_used(http):
+    calls, replies = http
+    replies.append(_Response(201, {"id": SESSION_ID, "status": "live"}))
+    SessionApi("key").create({"name": "Show"})
+    assert calls[0]["params"] is None
 
 
 def test_a_refused_start_says_why(http):

@@ -44,6 +44,7 @@ from cardstream.core.ximilar_session import (
     SessionRecorder,
     open_session,
     parse_session_spec,
+    parse_workspace_id,
 )
 
 # Tuning defaults shown in --help and used when a flag is omitted.
@@ -76,6 +77,14 @@ def _session_spec(value: str) -> str:
     """argparse ``type=`` for --ximilar-stream: NEW or a session id."""
     try:
         return parse_session_spec(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
+def _workspace_id(value: str) -> str:
+    """argparse ``type=`` for --ximilar-workspace."""
+    try:
+        return parse_workspace_id(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from None
 
@@ -535,6 +544,16 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         "(--ximilar-stream ID reopens it either way)",
     )
     session.add_argument(
+        "--ximilar-workspace",
+        dest="ximilar_workspace",
+        type=_workspace_id,
+        default=None,
+        metavar="ID",
+        help="the Ximilar workspace the session is saved in (its id, shown in "
+        "the Ximilar app); needed to resume a session of that workspace. "
+        "Default: the API key's default workspace",
+    )
+    session.add_argument(
         "--ximilar-stream-url",
         dest="ximilar_stream_url",
         default=DEFAULT_SESSION_URL,
@@ -668,6 +687,7 @@ def _check_session_flags(args) -> None:
     extras = {
         "--ximilar-stream-name": getattr(args, "ximilar_stream_name", None),
         "--ximilar-stream-keep-open": getattr(args, "ximilar_stream_keep_open", False),
+        "--ximilar-workspace": getattr(args, "ximilar_workspace", None),
     }
     if getattr(args, "ximilar_stream_platform", DEFAULT_PLATFORM) != DEFAULT_PLATFORM:
         extras["--ximilar-stream-platform"] = args.ximilar_stream_platform
@@ -697,7 +717,7 @@ def _stream_session(
     spec = getattr(args, "ximilar_stream", None)
     if spec is None:
         return None
-    api = SessionApi(api_key, args.ximilar_stream_url)
+    api = SessionApi(api_key, args.ximilar_stream_url, workspace=args.ximilar_workspace)
     game = options.game or ""
     name = args.ximilar_stream_name or (
         f"{game or options.id_type.label} show {datetime.now():%Y-%m-%d %H:%M}"
@@ -719,8 +739,9 @@ def _stream_session(
     )
     session_id = session["id"]
     verb = "started" if created else "resumed"
+    where = f" in workspace {api.workspace}" if api.workspace else ""
     print(
-        f"[session] {verb} {session.get('name') or 'session'} ({session_id}) — "
+        f"[session] {verb} {session.get('name') or 'session'} ({session_id}){where} — "
         f"review at {api.url('session', session_id, 'summary')}"
     )
     # The session keeps the rows the page lists, so the page's own rules

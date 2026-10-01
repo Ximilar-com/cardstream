@@ -319,6 +319,7 @@ class FakeSessionApi:
     """
 
     base_url = "https://api.test/cardstream/v2"
+    workspace: str | None = None
 
     def __init__(
         self, replies=(), status: str = "live", call_replies=(), image_replies=()
