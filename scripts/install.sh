@@ -25,8 +25,8 @@ EXTRAS="${CARDSTREAM_EXTRAS:-client,onnx}"
 # Each model ships as its OWN tarball, versioned independently, so a retrain
 # republishes one archive without touching the others. Bump the one that
 # changed here.
-MODELS_BASE_URL="${CARDSTREAM_MODELS_BASE_URL:-https://github.com/Ximilar-com/cardstream/releases/download/v1.0.0}"
-MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v1.tar.gz cardstream-similarity-v1.tar.gz}"
+MODELS_BASE_URL="${CARDSTREAM_MODELS_BASE_URL:-https://github.com/Ximilar-com/cardstream/releases/download/v2.0.0}"
+MODEL_ARCHIVES="${CARDSTREAM_MODEL_ARCHIVES:-cardstream-segmentation-v2.tar.gz cardstream-similarity-v1.tar.gz}"
 # The opt-in visual tracker is OpenCV's own published vitTracker, fetched from
 # the OpenCV zoo rather than republished. The URL floats on their main branch,
 # so the pinned checksum below is what holds the version still.
