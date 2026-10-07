@@ -35,11 +35,13 @@ function state(overrides = {}) {
     known_attrs: true,
     price_stats: false,
     result_threshold: 0.8,
+    min_sharpness: 0.68,
     camera_width: 1920,
     send_width: 1920,
     limits: {
       camera_widths: [640, 1280, 1920, 2560, 3840],
       result_threshold: { min: 0, max: 1, step: 0.05 },
+      min_sharpness: { min: 0, max: 1, step: 0.01 },
     },
     ...overrides,
   };
@@ -155,4 +157,18 @@ test("the range field takes its bounds from the process, not the page", () => {
   const field = FIELDS.find((f) => f.key === "result_threshold");
   assert.deepEqual(field.limits(state()), { min: 0, max: 1, step: 0.05 });
   assert.equal(field.format(0.8), "0.80");
+});
+
+test("the sharpness slider is finer than the result threshold's", () => {
+  // Its whole useful band is about 0.6 to 0.8 — a 0.05 step would be four stops.
+  const field = FIELDS.find((f) => f.key === "min_sharpness");
+  assert.equal(field.kind, "range");
+  assert.deepEqual(field.limits(state()), { min: 0, max: 1, step: 0.01 });
+  assert.equal(field.format(0.68), "0.68");
+});
+
+test("moving only the sharpness slider saves only that", () => {
+  const s = state();
+  const draft = { ...draftFrom(s), min_sharpness: 0.6 };
+  assert.deepEqual(dirtyPatch(draft, s), { min_sharpness: 0.6 });
 });

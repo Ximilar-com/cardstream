@@ -65,6 +65,7 @@ class SettingsPatch(BaseModel):
 
     # Analyzer + browser knobs, range-checked here.
     result_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    min_sharpness: float | None = Field(default=None, ge=0.0, le=1.0)
     camera_width: int | None = Field(default=None, ge=MIN_WIDTH, le=MAX_WIDTH)
     send_width: int | None = None
 
@@ -97,18 +98,26 @@ class SettingsPatch(BaseModel):
         }
 
 
+# Slider step per range knob — the one thing the model's bounds do not say.
+# Sharpness is finer because its whole useful band is about 0.6 to 0.8. A range
+# knob missing from here would reach the page with no limits at all, and the
+# browser's default 0..100 slider would post nothing but 400s.
+_RANGE_STEPS = {"result_threshold": 0.05, "min_sharpness": 0.01}
+
+
+def _range_limits(name: str, step: float) -> dict[str, float]:
+    bounds = {
+        m.__class__.__name__: m for m in SettingsPatch.model_fields[name].metadata
+    }
+    return {"min": bounds["Ge"].ge, "max": bounds["Le"].le, "step": step}
+
+
 def limits() -> dict[str, Any]:
     """What the dialog is allowed to send — read off the model, so the page's
     controls and the process's validation can never disagree."""
-    threshold = SettingsPatch.model_fields["result_threshold"]
-    bounds = {m.__class__.__name__: m for m in threshold.metadata}
     return {
         "camera_widths": list(CAMERA_WIDTH_CHOICES),
-        "result_threshold": {
-            "min": bounds["Ge"].ge,
-            "max": bounds["Le"].le,
-            "step": 0.05,
-        },
+        **{name: _range_limits(name, step) for name, step in _RANGE_STEPS.items()},
     }
 
 
@@ -127,13 +136,21 @@ class AnalyzerRegistry:
         result_threshold: float | None = None,
         camera_width: int = 1920,
         send_width: int = 1920,
+        *,
+        min_sharpness: float | None = None,
     ) -> None:
         self._make = make_analyzer
         self._analyzers: weakref.WeakSet = weakref.WeakSet()
+        # One attribute per LIVE_FIELDS name: make() re-tunes every new
+        # analyzer from these, so a value not handed in here REPLACES whatever
+        # the flag set — which is why the caller passes the pipeline's config.
         self.result_threshold = (
             AnalyzerConfig().result_threshold
             if result_threshold is None
             else result_threshold
+        )
+        self.min_sharpness = (
+            AnalyzerConfig().min_sharpness if min_sharpness is None else min_sharpness
         )
         # Page-side capture knob: what the browser asks getUserMedia for.
         self.camera_width = camera_width
@@ -192,7 +209,7 @@ def add_settings_routes(
         """Everything the settings dialog renders — the identify options read
         back off the shared client, plus the live knobs and their limits."""
         # No client (no API key, no server) still renders the dialog: camera
-        # width and the result threshold are ours either way.
+        # width and the two thresholds are ours either way.
         opts = identify_client.options if identify_client else IdentifyOptions()
         return {
             "enabled": identify_client is not None,
@@ -211,6 +228,7 @@ def add_settings_routes(
             "known_attrs": opts.known_attrs,
             "price_stats": opts.price_stats,
             "result_threshold": live.result_threshold,
+            "min_sharpness": live.min_sharpness,
             "camera_width": live.camera_width,
             "send_width": live.send_width,
             "analysis_width": analysis_width,

@@ -187,6 +187,10 @@ def test_flags_reach_analyzer_config():
             "0.8",
             "--empty-detect-interval",
             "1.6",
+            "--min-sharpness",
+            "0.55",
+            "--send-blurred-after",
+            "1.5",
             "--debug",
         ]
     )
@@ -199,6 +203,8 @@ def test_flags_reach_analyzer_config():
     assert cfg.detect_interval_seconds == 0.4
     assert cfg.idle_detect_interval_seconds == 0.8
     assert cfg.empty_detect_interval_seconds == 1.6
+    assert cfg.min_sharpness == 0.55
+    assert cfg.send_blurred_after_seconds == 1.5
     assert cfg.debug is True
 
 
@@ -269,6 +275,41 @@ def test_a_min_card_size_outside_0_to_1_is_a_usage_error(bad, capsys):
     with pytest.raises(SystemExit):
         _parse(["--min-card-size", bad])
     assert "min-card-size" in capsys.readouterr().err
+
+
+def test_the_sharpness_hold_is_on_by_default():
+    """Ships enabled, with a way out: a card that has just come into frame is
+    out of focus for the first fraction of a second, and that is exactly when
+    the motion gate says go. 0.68 sits between the blurred crops that used to
+    be sent (0.46-0.63 measured) and a card in focus (0.75-0.81); 3s is well
+    past any autofocus, so only a camera that never gets there waits it out."""
+    cfg = AnalyzerConfig()
+    assert (cfg.min_sharpness, cfg.send_blurred_after_seconds) == (0.68, 3.0)
+    assert _parse([]).min_sharpness == 0.68
+    assert _parse([]).send_blurred_after == 3.0
+
+
+@pytest.mark.parametrize(
+    "flag, bad",
+    [
+        ("--min-sharpness", "1.5"),
+        ("--min-sharpness", "-0.1"),
+        ("--min-sharpness", "sharp"),
+        ("--send-blurred-after", "-1"),
+        ("--send-blurred-after", "soon"),
+    ],
+)
+def test_a_sharpness_flag_out_of_range_is_a_usage_error(flag, bad, capsys):
+    with pytest.raises(SystemExit):
+        _parse([flag, bad])
+    assert flag.lstrip("-") in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("ok", ["0", "1", "0.68"])
+def test_min_sharpness_takes_the_whole_0_to_1_range(ok):
+    """Inclusive at both ends, unlike the shape filters: 0 is off, and 1 holds
+    every call until --send-blurred-after lets it go — extreme, not degenerate."""
+    assert _parse(["--min-sharpness", ok]).min_sharpness == float(ok)
 
 
 def test_retry_unmatched_reaches_the_config():

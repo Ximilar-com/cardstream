@@ -36,6 +36,7 @@ dev:  ## run the browser UI with the full development config
 	    --cooldown 2 \
 	    --forget-after 2 \
 	    --min-card-size 0.1 \
+	    --min-sharpness 0.68 --send-blurred-after 3 \
 	    --debug \
 	    --store-images images \
 	    --store-images-type frame \

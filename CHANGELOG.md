@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `--min-sharpness SCORE` (default 0.68, `0` = off): the identify call is
+  **held** while the card's crop is out of focus instead of being paid for.
+  The score is a re-blur ratio measured on the card cut from the original
+  frame — about 0.75–0.80 for a card in focus whatever is printed on it. A
+  held call spends nothing (no call, no cooldown) and is retried at the next
+  detection. Tunable live from the settings dialog ("Minimum sharpness").
+- `--send-blurred-after SECONDS` (default 3, `0` = wait forever): a card held
+  back this long is sent as it is, so a camera that never reaches the
+  threshold still gets names.
+- `--debug` prints the sharpness of every crop sent (`sharp=0.749`) and a
+  `[sharp]` line each time a call is held.
+
+### Fixed
+- A card that had just entered the frame was identified while the camera was
+  still focusing on it: the motion gate settles before the picture is sharp,
+  the blurred crop came back as a wrong card, and a second call was paid once
+  it cleared. On the tuning recording that was seven calls for four cards.
+
 ## [0.4.1] - 2026-10-01
 
 ### Added

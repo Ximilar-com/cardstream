@@ -65,7 +65,10 @@ local signals decides when a fresh call is actually warranted:
   3. identity gate            pHash Hamming / embedding cosine → NEW card?
             │  same card → IDENTIFIED (re-emit cached, 0 calls)    │
             ▼                                                      │
-  4. identify (async/thread, debounced)  → IDENTIFIED + result ────┘
+  4. sharpness hold           is the card's crop in focus yet?     │
+            │  blurred → wait for the next frame (0 calls)         │
+            ▼                                                      │
+  5. identify (async/thread, debounced)  → IDENTIFIED + result ────┘
 ```
 
 Detection itself is throttled in three tiers by the free motion gate (moving /
@@ -79,6 +82,7 @@ it costs nothing more. Swap cards and it costs exactly one call.
 | Motion gate | local (mean frame-diff) | free |
 | Card location | local: detection (RF-DETR / RT-DETRv2) or segmentation (RF-DETR) | free |
 | Same-card identity gate | local (embedding cosine, or pHash) | free |
+| Sharpness hold | local (re-blur ratio on the card's crop) | free |
 | Identify lookup | Ximilar `collectibles/v2/*_id` | **paid, once per distinct card** |
 
 Everything above the last row is free and local. Nothing but that one crop

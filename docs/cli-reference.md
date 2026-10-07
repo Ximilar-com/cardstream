@@ -78,6 +78,8 @@ The defaults below are what a **bare invocation** actually uses. See
 | `--cooldown` | `2.0` | min seconds between identify calls |
 | `--retry-unmatched`, `--retry_unmatched` | `0.5` | ask again about a card whose identify came back with nothing (no match, or a match dropped by --result-threshold) after this many seconds (default 0.5). A card that DID match still costs exactly one call, however long it is held. Raise it, or set 0 to never retry, if something that can never match — a slab back, a hand read as a card — is sitting in frame spending calls |
 | `--forget-after` | `2.0` | a card gone longer than this stops counting as the same card: the identity gate is cleared so the next one is identified from scratch (default 2s, 0 = remember forever). Short dropouts are unaffected |
+| `--min-sharpness` | `0.68` | hold the identify call while the card's crop is blurrier than this, instead of paying for a picture the camera has not focused yet — a blurred crop comes back as a confident wrong card. The score is 0..1: a card in focus is about 0.75-0.8 whatever is printed on it, one still out of focus about 0.45-0.65 (default 0.68, 0 = send it however blurred). --debug prints the score of every crop sent; lower it if your camera never gets there |
+| `--send-blurred-after` | `3.0` | stop waiting for --min-sharpness once a card has been held back this long and send the frame as it is, so a camera that never reaches the threshold still gets names, only later (default 3s, 0 = wait for a sharp frame forever) |
 
 ## motion gate and detection throttle
 

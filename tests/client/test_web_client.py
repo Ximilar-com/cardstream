@@ -43,11 +43,20 @@ def _analyzer_factory(fake_detector, fake_embedder, fake_identify, **cfg):
     return make_analyzer
 
 
+def _web_app(factory, **kwargs):
+    """``create_web_app`` for the fakes: the sharpness hold off unless a test
+    asks for it. The app re-tunes every analyzer it makes from its OWN startup
+    values, so the 0.0 in DETERMINISTIC_ANALYZER_CFG does not survive here on
+    its own — and a flat-fill fake frame would hold every call."""
+    kwargs.setdefault("min_sharpness", 0.0)
+    return create_web_app(factory, **kwargs)
+
+
 def _make_client(fake_detector, fake_embedder, fake_identify, debug=False):
     factory = _analyzer_factory(
         fake_detector, fake_embedder, fake_identify, debug=debug
     )
-    return TestClient(create_web_app(factory, debug=debug))
+    return TestClient(_web_app(factory, debug=debug))
 
 
 def _drain_until_frame_and_identified(client, attempts):
@@ -152,7 +161,7 @@ def test_ws_snapshots_carry_the_analysed_dimensions(
     factory = _analyzer_factory(
         fake_detector, fake_embedder, fake_identify, analysis_width=480
     )
-    client = TestClient(create_web_app(factory))
+    client = TestClient(_web_app(factory))
     big = jpeg_bytes(make_frame(w=1920, h=1080, fill=40))
     with client.websocket_connect("/ws") as ws:
         ws.send_bytes(big)
@@ -166,7 +175,7 @@ def test_ws_identify_crop_comes_from_the_full_frame(
     factory = _analyzer_factory(
         fake_detector, fake_embedder, fake_identify, analysis_width=480
     )
-    client = TestClient(create_web_app(factory))
+    client = TestClient(_web_app(factory))
     big = jpeg_bytes(make_frame(w=1920, h=1080, fill=40))
     with client.websocket_connect("/ws") as ws:
         for _ in range(8):
@@ -242,7 +251,7 @@ def test_settings_endpoints_read_and_write_the_identify_client(
 ):
     fake_identify.options = IdentifyOptions()  # a known starting point
     factory = _analyzer_factory(fake_detector, fake_embedder, fake_identify)
-    client = TestClient(create_web_app(factory, identify_client=fake_identify))
+    client = TestClient(_web_app(factory, identify_client=fake_identify))
 
     s = client.get("/settings").json()
     assert s["enabled"] is True
@@ -300,7 +309,7 @@ def test_settings_category_switch_moves_the_endpoint_and_games(
 
     identify = DirectXimilarClient("key", IdentifyOptions(game="Pokémon"))
     factory = _analyzer_factory(fake_detector, fake_embedder, fake_identify)
-    client = TestClient(create_web_app(factory, identify_client=identify))
+    client = TestClient(_web_app(factory, identify_client=identify))
 
     s = client.post("/settings", json={"category": "sport"}).json()
     assert s["category"] == "sport" and identify.options.id_type.key == "sport"
@@ -332,7 +341,7 @@ def test_settings_result_threshold_retunes_live_analyzers(
         return analyzer
 
     client = TestClient(
-        create_web_app(factory, identify_client=fake_identify, result_threshold=0.8)
+        _web_app(factory, identify_client=fake_identify, result_threshold=0.8)
     )
     assert client.get("/settings").json()["result_threshold"] == 0.8
 
@@ -348,6 +357,50 @@ def test_settings_result_threshold_retunes_live_analyzers(
 
     assert client.post("/settings", json={"result_threshold": 2}).status_code == 400
     assert client.post("/settings", json={"result_threshold": "x"}).status_code == 400
+
+
+def test_settings_min_sharpness_retunes_live_analyzers(
+    fake_detector, fake_embedder, fake_identify
+):
+    """The same path as the result threshold, and the reason the app is handed
+    the startup value: it re-tunes every analyzer it makes from its own copy,
+    so one it was not given would silently replace --min-sharpness."""
+    made = []
+
+    def factory(on_result, on_log):
+        analyzer = make_smart_analyzer(
+            fake_detector,
+            fake_embedder,
+            fake_identify,
+            on_result=on_result,
+            on_log=on_log,
+            min_sharpness=0.9,  # NOT what the app was started with
+        )
+        made.append(analyzer)
+        return analyzer
+
+    client = TestClient(_web_app(factory, min_sharpness=0.42))
+    assert client.get("/settings").json()["min_sharpness"] == 0.42
+
+    with client.websocket_connect("/ws"):
+        assert made[0]._cfg.min_sharpness == 0.42  # the app's value wins
+        s = client.post("/settings", json={"min_sharpness": 0.6}).json()
+        assert s["min_sharpness"] == 0.6
+        assert made[0]._cfg.min_sharpness == 0.6  # the running analyzer, live
+
+    with client.websocket_connect("/ws"):
+        assert made[-1]._cfg.min_sharpness == 0.6  # and the ones made later
+
+    assert client.post("/settings", json={"min_sharpness": 1.5}).status_code == 400
+    assert client.post("/settings", json={"min_sharpness": "x"}).status_code == 400
+
+
+def test_an_app_started_without_a_sharpness_value_uses_the_shipped_default():
+    from cardstream.client.analyzer import AnalyzerConfig
+
+    client = TestClient(create_web_app(lambda **k: None))
+    shipped = AnalyzerConfig().min_sharpness
+    assert client.get("/settings").json()["min_sharpness"] == shipped
 
 
 def test_settings_camera_width_round_trips(web_client):
@@ -390,6 +443,11 @@ def test_settings_serves_the_limits_it_validates_against(web_client):
     limits = web_client.get("/settings").json()["limits"]
     assert limits["camera_widths"] == [640, 1280, 1920, 2560, 3840]
     assert limits["result_threshold"] == {"min": 0.0, "max": 1.0, "step": 0.05}
+    # Finer: its whole useful band is about 0.6 to 0.8.
+    assert limits["min_sharpness"] == {"min": 0.0, "max": 1.0, "step": 0.01}
+    for value, status in ((0.0, 200), (1.0, 200), (1.01, 400), (-0.01, 400)):
+        r = web_client.post("/settings", json={"min_sharpness": value})
+        assert r.status_code == status, value
 
     lo, hi = limits["result_threshold"]["min"], limits["result_threshold"]["max"]
     assert (
@@ -433,6 +491,7 @@ def test_settings_patch_leaves_unsent_fields_alone(web_client):
     assert after["camera_width"] == 1280
     for key in (
         "result_threshold",
+        "min_sharpness",
         "send_width",
         "category",
         "known_attrs",
@@ -484,7 +543,7 @@ def test_stream_mode_pulls_analyses_and_broadcasts(
     endpoint = ws_source(jpeg_bytes())
 
     factory = _analyzer_factory(fake_detector, fake_embedder, fake_identify)
-    app = create_web_app(factory, source=WsJpegSource(endpoint))
+    app = _web_app(factory, source=WsJpegSource(endpoint))
     # `with TestClient(...)` runs startup, which launches the pump task.
     with TestClient(app) as client:
         got_frame, got_identified = _drain_until_frame_and_identified(client, 60)
@@ -501,7 +560,7 @@ def test_capture_mode_pulls_from_video_source(
     video = write_mjpg_avi(tmp_path / "feed.avi")
 
     factory = _analyzer_factory(fake_detector, fake_embedder, fake_identify)
-    app = create_web_app(factory, source=CaptureSource(video))
+    app = _web_app(factory, source=CaptureSource(video))
     with TestClient(app) as client:
         assert client.get("/mode").json()["source"] == "capture"
         got_frame, got_identified = _drain_until_frame_and_identified(client, 80)
@@ -520,7 +579,7 @@ def test_stream_pump_relays_the_analysed_frame_not_the_original(
     factory = _analyzer_factory(
         fake_detector, fake_embedder, fake_identify, analysis_width=400
     )
-    app = create_web_app(factory, source=WsJpegSource(endpoint), analysis_width=400)
+    app = _web_app(factory, source=WsJpegSource(endpoint), analysis_width=400)
     with TestClient(app) as client, client.websocket_connect("/ws") as ws:
         for _ in range(60):
             message = ws.receive()
@@ -575,7 +634,7 @@ def test_stream_pump_reconnects_after_source_failure(
     source = FlakySource()
 
     factory = _analyzer_factory(fake_detector, fake_embedder, fake_identify)
-    app = create_web_app(factory, source=source)
+    app = _web_app(factory, source=source)
     with TestClient(app):
         assert source.opened_twice.wait(5), "pump never reconnected after SourceError"
     assert source.opens >= 2

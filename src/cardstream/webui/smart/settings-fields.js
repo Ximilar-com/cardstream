@@ -78,6 +78,16 @@ export const FIELDS = [
     format: (value) => Number(value).toFixed(2),
   },
   {
+    key: "min_sharpness",
+    kind: "range",
+    label: "Minimum sharpness",
+    hint:
+      "A card blurrier than this is not sent until the camera has it in " +
+      "focus. A sharp card scores about 0.75–0.80. 0.00 = send anything.",
+    limits: (state) => state.limits.min_sharpness,
+    format: (value) => Number(value).toFixed(2),
+  },
+  {
     key: "camera_width",
     kind: "select",
     label: "Camera width",

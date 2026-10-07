@@ -94,6 +94,17 @@ def _workspace_id(value: str) -> str:
 _fraction = bounded_float(
     0.0, 1.0, "expected 0..1 (0 = off; 1 would reject every detection)", inclusive=False
 )
+# A sharpness SCORE (core.sharpness). Inclusive at the top, unlike a fraction
+# of the frame: 1.0 holds every call until --send-blurred-after lets it go,
+# which is extreme but means something.
+_sharpness_score = bounded_float(
+    0.0, 1.0, "expected 0..1 (0 = off: send the card however blurred)"
+)
+_hold_seconds = bounded_float(
+    0.0,
+    None,
+    "expected a non-negative number of seconds (0 = wait for a sharp frame forever)",
+)
 # Grow-the-crop. Inclusive at both ends: 1.0 pushes every edge out by a full
 # card-width, which is extreme but meaningful rather than degenerate.
 _expansion = bounded_float(
@@ -443,6 +454,34 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         f"identified from scratch (default {_DEFAULTS.forget_after_seconds:g}s, "
         "0 = remember forever). Short dropouts are unaffected",
     )
+    # No underscore aliases on these two: the docs contract reads a flag name
+    # up to its first "_", so an alias in the generated table turns into a
+    # claim about a flag called "--min".
+    gate.add_argument(
+        "--min-sharpness",
+        type=_sharpness_score,
+        default=_DEFAULTS.min_sharpness,
+        metavar="SCORE",
+        help="hold the identify call while the card's crop is blurrier than "
+        "this, instead of paying for a picture the camera has not focused "
+        "yet — a blurred crop comes back as a confident wrong card. The "
+        "score is 0..1: a card in focus is about 0.75-0.8 whatever is "
+        "printed on it, one still out of focus about 0.45-0.65 "
+        f"(default {_DEFAULTS.min_sharpness:g}, 0 = send it however "
+        "blurred). --debug prints the score of every crop sent; lower it "
+        "if your camera never gets there",
+    )
+    gate.add_argument(
+        "--send-blurred-after",
+        type=_hold_seconds,
+        default=_DEFAULTS.send_blurred_after_seconds,
+        metavar="SECONDS",
+        help="stop waiting for --min-sharpness once a card has been held "
+        "back this long and send the frame as it is, so a camera that "
+        "never reaches the threshold still gets names, only later "
+        f"(default {_DEFAULTS.send_blurred_after_seconds:g}s, 0 = wait "
+        "for a sharp frame forever)",
+    )
 
     motion = ap.add_argument_group("motion gate and detection throttle")
     motion.add_argument(
@@ -668,6 +707,8 @@ def _analyzer_config(args) -> AnalyzerConfig:
         cooldown_seconds=args.cooldown,
         forget_after_seconds=args.forget_after,
         retry_unmatched_seconds=args.retry_unmatched,
+        min_sharpness=args.min_sharpness,
+        send_blurred_after_seconds=args.send_blurred_after,
         motion_threshold=args.motion_threshold,
         still_frames_required=args.still_frames,
         detect_interval_seconds=args.detect_interval,

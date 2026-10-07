@@ -144,6 +144,9 @@ def main() -> None:
         if static_frame is not None:
             still_fps = args.fps or 10.0
             print(f"[client] analysing still image at {still_fps} fps — Ctrl-C to stop")
+            # A still cannot come into focus, so holding its call for a
+            # sharper frame only delays the one answer it will ever get.
+            analyzer.tune(min_sharpness=0.0)
             _run_still_image(analyzer, static_frame, still_fps, args.loop, print_state)
         else:
             try:

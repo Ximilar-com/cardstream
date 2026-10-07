@@ -10,6 +10,7 @@ from _helpers import (
     FakeSessionApi,
     FakeTracker,
     make_frame,
+    printed_card,
     unit_vec,
 )
 from _helpers import (
@@ -1220,3 +1221,179 @@ def test_the_match_is_complete_when_the_core_publishes_it(
     (ident,) = published
     assert ident["thumbnail"].startswith("data:image/jpeg;base64,")
     assert isinstance(ident["elapsed_ms"], int)
+
+
+# --- the sharpness hold --------------------------------------------------------
+#
+# The motion gate settles while the camera is still focusing on a card that
+# has just come in. Everything above runs with the hold off (flat fakes have
+# nothing in them to blur); these turn it on and put a PRINTED card where the
+# fake detector says one is.
+
+SHARP_ENOUGH = 0.68  # the shipped default — see test_common for the pin
+
+
+def card_in_frame(blur=0.0, w=1280, h=960):
+    """A frame with a printed card exactly on FakeDetector's box.
+
+    That box is 50x70 at (10, 10) in ANALYSIS coordinates; these frames are
+    analysed at 320 px, a quarter of their width, so the card sits at
+    (40, 40) and is 200x280 in the pixels the paid crop is cut from.
+    """
+    import cv2
+
+    frame = np.full((h, w, 3), 40, dtype=np.uint8)
+    card = cv2.resize(printed_card(), (200, 280), interpolation=cv2.INTER_AREA)
+    if blur:
+        card = cv2.GaussianBlur(card, (0, 0), blur)
+    frame[40:320, 40:240] = card
+    return frame
+
+
+def show(analyzer, frame, frames=6):
+    snap = None
+    for _ in range(frames):
+        snap = analyzer.process(frame)
+    return snap
+
+
+def focusing_analyzer(fake_detector, fake_embedder, fake_identify, **cfg):
+    cfg.setdefault("min_sharpness", SHARP_ENOUGH)
+    return make_analyzer(
+        fake_detector, fake_embedder, fake_identify, analysis_width=320, **cfg
+    )
+
+
+def test_a_blurred_card_is_held_until_it_is_sharp(
+    fake_detector, fake_embedder, fake_identify
+):
+    """The bug this exists for: a card that has just entered the frame was paid
+    for out of focus, came back as the wrong card, and was paid for again."""
+    from cardstream.core.sharpness import sharpness
+
+    analyzer = focusing_analyzer(fake_detector, fake_embedder, fake_identify)
+
+    snap = show(analyzer, card_in_frame(blur=5))  # settled, but not in focus
+    assert fake_identify.calls == 0
+    # HELD, not dropped: the card is still there and still outlined.
+    assert snap.state == CardState.SETTLED
+    assert snap.bbox.as_list() == [10, 10, 50, 70]
+
+    snap = show(analyzer, card_in_frame())  # the camera caught up
+    assert fake_identify.calls == 1  # one call, for the one card
+    assert snap.state == CardState.IDENTIFIED
+    assert sharpness(fake_identify.crops[0]) >= SHARP_ENOUGH
+
+
+def test_min_sharpness_zero_sends_whatever_is_there(
+    fake_detector, fake_embedder, fake_identify
+):
+    analyzer = focusing_analyzer(
+        fake_detector, fake_embedder, fake_identify, min_sharpness=0.0
+    )
+    show(analyzer, card_in_frame(blur=5))
+    assert fake_identify.calls == 1
+
+
+def test_a_held_call_is_announced_once_with_its_score(
+    fake_detector, fake_embedder, fake_identify
+):
+    """The score in the log is how anyone finds the threshold for their camera
+    — once per hold, though: a line per detection would bury everything else."""
+    logs: list[str] = []
+    analyzer = focusing_analyzer(
+        fake_detector, fake_embedder, fake_identify, on_log=logs.append, debug=True
+    )
+    show(analyzer, card_in_frame(blur=5), frames=12)
+    held = [line for line in logs if line.startswith("[sharp]")]
+    assert len(held) == 1
+    assert "under 0.68" in held[0] and "holding" in held[0]
+
+    show(analyzer, card_in_frame())
+    sent = [line for line in logs if line.startswith("[identify] new card")]
+    assert len(sent) == 1 and " sharp=0." in sent[0]
+
+
+def test_the_card_is_measured_as_located_at_full_resolution(
+    monkeypatch, fake_detector, fake_embedder, fake_identify
+):
+    """Not the analysis-resolution crop the gate compares, and not the
+    --detection-expansion margin either: the score must not move when the
+    margin is retuned, and background is rarely in focus anyway."""
+    from cardstream.client import analyzer as analyzer_mod
+
+    measured = []
+
+    def spy(crop):
+        measured.append(crop.shape[:2])
+        return 1.0
+
+    monkeypatch.setattr(analyzer_mod, "sharpness", spy)
+    analyzer = focusing_analyzer(
+        fake_detector, fake_embedder, fake_identify, detection_expansion=0.5
+    )
+    show(analyzer, card_in_frame())
+    assert measured == [(280, 200)]  # the 50x70 box, x4 — asked once, then paid
+    paid_h, paid_w = fake_identify.crops[0].shape[:2]
+    assert paid_h > 280 and paid_w > 200  # ...while the paid crop IS expanded
+
+
+def test_a_card_being_held_in_frame_is_never_measured(
+    monkeypatch, fake_detector, fake_embedder, fake_identify
+):
+    """Asked only when a call would otherwise fire — so the full-resolution cut
+    is a per-card cost, not a per-frame one."""
+    from cardstream.client import analyzer as analyzer_mod
+
+    measured = []
+    monkeypatch.setattr(analyzer_mod, "sharpness", lambda c: measured.append(1) or 1.0)
+    analyzer = focusing_analyzer(fake_detector, fake_embedder, fake_identify)
+    show(analyzer, card_in_frame(), frames=30)
+    assert fake_identify.calls == 1
+    assert len(measured) == 1
+
+
+def test_min_sharpness_is_retuned_on_a_running_analyzer(
+    fake_detector, fake_embedder, fake_identify
+):
+    """Read per call rather than baked into an object, which is what earns it
+    a place in LIVE_FIELDS — and a slider in the settings dialog."""
+    from cardstream.client.analyzer import LIVE_FIELDS
+
+    analyzer = focusing_analyzer(fake_detector, fake_embedder, fake_identify)
+    show(analyzer, card_in_frame(blur=5))
+    assert fake_identify.calls == 0
+
+    analyzer.tune(min_sharpness=0.1)  # the same blurred card now clears it
+    show(analyzer, card_in_frame(blur=5))
+    assert fake_identify.calls == 1
+    assert "min_sharpness" in LIVE_FIELDS
+
+
+def test_a_card_that_never_sharpens_is_sent_after_the_timeout(
+    monkeypatch, fake_detector, fake_embedder, fake_identify
+):
+    """A camera that cannot reach the threshold must still get names."""
+    from cardstream.client import analyzer as analyzer_mod
+
+    clock = {"t": 0.0}
+    monkeypatch.setattr(analyzer_mod.time, "monotonic", lambda: clock["t"])
+    logs: list[str] = []
+    analyzer = focusing_analyzer(
+        fake_detector,
+        fake_embedder,
+        fake_identify,
+        on_log=logs.append,
+        send_blurred_after_seconds=3.0,
+    )
+    blurred = card_in_frame(blur=5)
+    show(analyzer, blurred)
+    clock["t"] = 2.9
+    show(analyzer, blurred)
+    assert fake_identify.calls == 0
+
+    clock["t"] = 3.0
+    show(analyzer, blurred)
+    assert fake_identify.calls == 1
+    # Said without --debug: a blurred crop that was paid for needs explaining.
+    assert any("still blurred after 3.0s" in line for line in logs)

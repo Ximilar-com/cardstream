@@ -20,6 +20,7 @@ All vision runs on your machine; one JPEG crop leaves it per **distinct** card:
 | Motion gate | local (mean frame-diff) | free |
 | Card location | local: detection (RF-DETR / RT-DETRv2) or segmentation (RF-DETR) | free |
 | Same-card identity gate | local (embedding cosine, or pHash) | free |
+| Sharpness hold | local (re-blur ratio on the card's crop) | free |
 | Identify lookup | Ximilar `collectibles/v2/*_id` | **paid, once per distinct card** |
 
 ```bash
@@ -41,6 +42,7 @@ cardstream-web --store-images crops/    # keep every crop that was paid for
 cardstream-web --store-images shots/ --store-images-type frame   # …or the whole frame
 cardstream-web --min-card-size 0 --min-card-aspect-ratio 0   # accept every detection
 cardstream-web --retry-unmatched 0      # never re-ask about a card that came back nameless
+cardstream-web --min-sharpness 0.6 --debug   # a softer camera; the log prints each crop's score
 ```
 
 ## Call economics: when a card costs money
@@ -75,6 +77,43 @@ out of shot, held edge-on mid-swap, or a corner poking past a sleeve detects at
 `0` disables either one. `--debug` logs each rejection —
 `[size] box 120x300 under 0.20 of 960x540 — ignored`, or
 `[aspect] box 214x702 is 0.30 (under 0.40) — ignored`.
+
+### Waiting for focus
+
+A third check does not drop the card, it **holds the call**. The motion gate
+settles as soon as the picture stops changing, and a card that has just come
+into frame stops moving a few tenths of a second before the camera has focused
+on it. Sent then, the crop comes back as a confident wrong card — and once the
+picture clears, the identity gate sees a different-looking crop and pays for a
+second call. On the recording this was tuned on, four cards cost seven calls
+that way, four of them on a blur; with the hold they cost four.
+
+- **`--min-sharpness SCORE`** (default `0.68`) — a card whose crop scores under
+  this is not sent yet. Nothing is spent: no call, no cooldown, and the card
+  stays outlined on the page. The next detection, 0.1–0.2 s later, asks again.
+- **`--send-blurred-after SECONDS`** (default `3`) — how long a card can be held
+  back before the frame is sent as it is. Autofocus takes well under a second,
+  so this only matters for a camera that never reaches the threshold: it still
+  gets names, a few seconds late. `0` waits for a sharp frame forever.
+
+The score is `0..1` and measures the card itself, cut from the original frame:
+blur the crop once more and see how much of its fine contrast that removes. A
+card in focus loses most of it and scores about **0.75–0.80 whatever is printed
+on it**; one still out of focus has little left to lose and scores about
+0.45–0.65. That independence from the artwork is why it is used instead of the
+usual variance-of-Laplacian, which moves about 2x from one card to the next. It
+does not move with brightness, JPEG quality or how large the card is in frame.
+It does rise with sensor noise, so in very low light the hold lets more through
+rather than less.
+
+To set it for your camera, run with `--debug` and read the scores:
+`[identify] new card — calling identify crop=457x648 deskewed sharp=0.749` is
+printed for every crop sent, and
+`[sharp] 0.523 under 0.68 — holding the call for a sharper frame` once each time
+a call is held. If your sharpest crops sit under the default, lower it — the
+slider in the settings dialog changes it without a restart. `0` turns the hold
+off. A still image passed to `cardstream-client` is never held: it cannot come
+into focus.
 
 `--store-images FOLDER` writes one JPEG per **paid** call — the free frames
 never touch the disk. Each file is the record's own `_base64` decoded, so it is
@@ -154,6 +193,7 @@ The smart page keeps the Game dropdown at the top of the right panel with a
 | Assume front side, upright | On: send `Side: front` + `Rotation: rotation_ok`. Off: let the endpoint decide |
 | Market price statistics | On: send the top-level `price_stats` flag; the card panel and every history row show the USD median, range and latest sale (tcg / sport / comics only) |
 | Result threshold | `--result-threshold` retuned live on every running analyzer |
+| Minimum sharpness | `--min-sharpness` retuned live the same way — see [Waiting for focus](#waiting-for-focus) |
 | Send rate, Show detection box | Page-local: capture fps and the bbox overlay |
 | ☀ / ☾ (header, top right) | Page-local: light or dark theme. Follows the system setting until you pick; the pick is remembered by the browser |
 

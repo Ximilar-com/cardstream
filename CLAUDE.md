@@ -30,9 +30,16 @@ is warranted:
    (default 0.5, `0` = the strict old policy) drops the signature again after
    the delay — one call per distinct card still holds; one call per distinct
    *failure* does not.
-4. **Identify** (`tcg_id` etc.) runs off the frame loop; result pushed back.
+4. **Sharpness hold** asks whether the card's crop is in FOCUS before the call
+   is spent. The motion gate settles while the camera is still focusing on a
+   card that has just come in, and a blurred crop comes back as a confident
+   wrong card — followed by a second paid call once the picture clears. A crop
+   scoring under `--min-sharpness` (default 0.68) HOLDS the call rather than
+   dropping the card: nothing is committed, the next detection asks again, and
+   after `--send-blurred-after` seconds (default 3) the frame goes as it is.
+5. **Identify** (`tcg_id` etc.) runs off the frame loop; result pushed back.
    The crop it sends is re-cut from the ORIGINAL frame — steps 1-3 all run on
-   a `--width` downscale, identification does not.
+   a `--width` downscale, identification (and the sharpness score) does not.
 
 The state machine lives ONCE in `core/engine.py` (`DecisionCore` + `CallGuard`
 + `IdentityGate`). One driver schedules it: `SmartAnalyzer`
@@ -62,11 +69,25 @@ src/cardstream/
   core/              SHARED, dependency-light (numpy + opencv-headless + requests only)
     engine.py        DecisionCore (throttle tiers incl. tracking re-sync, snapshot ladder,
                      cooldown, no-retry + its --retry-unmatched escape hatch,
-                     forget-after-absence) -> Snapshot (state/bbox/identification/quad,
+                     forget-after-absence, the sharpness HOLD + its
+                     --send-blurred-after timeout: on_detection takes a lazy
+                     `sharp` predicate, asked only when a call would otherwise
+                     fire, and a no commits nothing) -> Snapshot (state/bbox/identification/quad,
                      a named shape rather than a tuple that kept growing),
                      CallGuard (in-flight + interval + watchdog),
                      IdentityGate ABC (decide/commit/reset) + PhashGate
     motion.py        MotionGate + phash + hamming
+    sharpness.py     sharpness(crop) -> 0..1, THE score behind --min-sharpness:
+                     a re-blur ratio (blur the crop again, measure how much
+                     neighbour-to-neighbour contrast that removes) on the gray
+                     crop shrunk to a 256 px long edge, the WORSE of the two
+                     axes so one-directional motion blur is caught. A ratio of
+                     the crop against ITSELF, which is why one threshold holds
+                     across cards: ~0.75-0.81 in focus whatever is printed,
+                     ~0.46-0.63 for the out-of-focus crops that used to be
+                     sent — where variance-of-Laplacian moves 2x with the
+                     artwork. Exposure, JPEG quality and crop size barely move
+                     it; sensor noise RAISES it, so the hold fails open
     detection_filters.py  DetectionFilter ABC + MinSizeFilter (--min-card-size,
                      a FRACTION of the analysed frame, either dimension) and
                      MinAspectFilter (--min-card-aspect-ratio, SHORT side over
@@ -278,9 +299,15 @@ src/cardstream/
                      every fired call under --ximilar-stream (finish() ends the
                      row when a camera tab disconnects), counts
                      fired calls in .identify_calls (the page's "N calls" badge) and
-                     takes result_threshold live from the settings dialog via
-                     .tune(), which replaces the frozen config wholesale;
-                     LIVE_FIELDS is the honest list of what CAN be retuned
+                     takes result_threshold and min_sharpness live from the
+                     settings dialog via .tune(), which replaces the frozen
+                     config wholesale; LIVE_FIELDS is the honest list of what
+                     CAN be retuned. _sharp_enough() is the predicate the core
+                     asks before a call fires: it cuts the LOCATED card from
+                     the original frame (_cut_card, shared with
+                     _identify_crop, WITHOUT --detection-expansion so the
+                     score does not move with the margin) and compares
+                     core.sharpness with the live threshold
     embedders.py     embedder backends (torch/.pt, .onnx, .tflite — extension-routed
                      via _EXTENSION_BACKENDS) + EmbeddingGate(IdentityGate)
     _tflite.py       shared LiteRT/TFLite interpreter bootstrap
@@ -317,7 +344,9 @@ src/cardstream/
                      dialog rebinds (target.options = target.options.with_(...))
     ximilar_api.py   DirectXimilarClient — the only implementation, wrapping
                      core's XimilarIdentifier
-    stream_client.py / web_client.py   the two entrypoints
+    stream_client.py / web_client.py   the two entrypoints (the headless one
+                     turns the sharpness hold off for a still image, which
+                     cannot come into focus)
     web_common.py    the ONE fastapi import guard + the three message shapes both
                      frame paths send (result_payload / snapshot_payload / LogSink)
     web_settings.py  GET /mode + GET/POST /settings (the ⚙ dialog's whole
@@ -325,9 +354,13 @@ src/cardstream/
                      — POST is a PATCH, so exclude_unset is what separates
                      "absent" from "cleared" — and serves its own bounds as the
                      `limits` block, so the page's controls and the process's
-                     validation are the same numbers. AnalyzerRegistry retunes
-                     every analyzer in flight (weakly held — a closed
-                     connection stays collectable) via SmartAnalyzer.tune()
+                     validation are the same numbers (_RANGE_STEPS adds each
+                     slider's step, the one thing the bounds do not say).
+                     AnalyzerRegistry retunes every analyzer in flight (weakly
+                     held — a closed connection stays collectable) via
+                     SmartAnalyzer.tune(), and re-tunes each NEW one from its
+                     own copy of every LIVE field — so it must be handed the
+                     pipeline's startup values, or it replaces the flag's
     web_camera.py    camera mode: browser pushes frames, one analyzer per
                      connection, LatestFrame keeps only the NEWEST queued frame
     web_stream.py    pulled-source mode: one shared analyzer in a thread,
@@ -477,6 +510,8 @@ single source for the tuning ones; argparse reads every default from it.
 | `--detect-interval` | 0.1 | idle/empty both 0.2 |
 | `--cooldown` | 2.0 | |
 | `--forget-after` | 2.0 | |
+| `--min-sharpness` | 0.68 | a crop blurrier than this HOLDS the call |
+| `--send-blurred-after` | 3.0 | seconds before a held card is sent anyway |
 | `--min-card-time` | 1.0 | seconds on stream before a card gets a history row |
 
 `--game` and `--alphabet` are deliberately NOT defaulted: a Subcategory
@@ -521,6 +556,7 @@ cardstream-web --game "Pokémon" --alphabet japanese --set-code M4   # record pr
 cardstream-web --camera-width 3840 --width 1280 --debug   # more pixels to identify from
 cardstream-web --split-results                            # one history row per appearance
 cardstream-web --price-stats                              # USD market prices with every match; toggle live in ⚙
+cardstream-web --min-sharpness 0.6 --debug                # softer camera; the log prints each crop's score
 
 cardstream-web --version                        # print the version and exit (also cardstream-client)
 
@@ -549,12 +585,25 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   point. Nothing downstream branches on which kind is running: `bbox` stays the
   quad's axis-aligned hull for the filters, the tracker and the overlay, and
   the single `det.quad is not None` check lives in `_identify_detection`.
+- **A blurred card is HELD, not filtered.** `core/detection_filters.py` rules
+  answer "is this a card" and drop the detection to None — which marks the
+  card absent, flickers the outline and starts the `--forget-after` clock. A
+  card out of focus is still a card: only the CALL waits. So a rule about the
+  QUALITY of the crop goes through `DecisionCore.on_detection`'s `sharp`
+  predicate, where a no commits nothing (no signature, no cooldown) and the
+  next detection simply asks again. The driver measures and compares (the
+  threshold is live, like `result_threshold`); what a no MEANS — the hold
+  streak, the timeout — is the core's.
 - **Adding an identify prefill or a settings knob is a two-file change.** A
   card category is one `IdType` entry in `core/id_types.py`; an identify option
   is one field on `IdentifyOptions` (which owns normalization and the record);
   a settings knob is one descriptor in
   `webui/smart/settings-fields.js` plus one field on `SettingsPatch`. If a
-  change needs more places than that, the duplication has come back. The one
+  change needs more places than that, the duplication has come back. A knob
+  that retunes a running ANALYZER (`result_threshold`, `min_sharpness`) costs
+  three more one-liners, because its value has to reach analyzers already in
+  flight: the name in `LIVE_FIELDS`, the `AnalyzerRegistry` attribute fed
+  from `create_web_app`, and a step in `_RANGE_STEPS`. The other
   legitimate exception is an option that also changes the RESPONSE
   (`--price-stats`): that additionally touches `parse_best_match`, one
   `Identification` field and each renderer — the card panel, the history
@@ -652,6 +701,26 @@ docker build -t cardstream . && docker run --rm -e XIMILAR_API_KEY -p 127.0.0.1:
   `--alphabet` is therefore mandatory in practice whenever `--game` is set —
   it is omitted by default (endpoint classifies) and validated locally, since
   the API accepts an unknown value silently and returns a wrong match.
+- **A held call keeps the previous card's name on screen.** While the
+  sharpness hold waits, `last_ident` is deliberately NOT cleared: "changed" was
+  decided on a blurred crop, which is exactly when the identity gate cannot be
+  trusted, and dropping the name of a card that is merely refocusing would
+  lose it for good (the sharp frame matches the signature and never fires).
+  The cost is that a card swapped in within `--forget-after` shows its
+  predecessor's name — and extends that history row — until its own call
+  fires; that already happened while a card was MOVING, the hold adds the
+  focus time, bounded by `--send-blurred-after`. The gain: a refocus on an
+  already-named card no longer costs a call.
+- **The sharpness hold is a streak of detections, not a per-card timer.** The
+  timeout counts consecutive held detections and anything else ends it. An
+  in-place swap small enough to stay under the motion threshold continues the
+  streak, so the second card can reach `--send-blurred-after` early. The
+  timeout sends the CURRENT frame, not the sharpest one seen. Sensor noise
+  raises the score, so in very low light the hold lets more through. And the
+  default 0.68 comes from one phone recording (sharp 0.75-0.81, blurred
+  0.46-0.63): a camera whose sharpest crops sit under it pays the full timeout
+  on every card until `--min-sharpness` is lowered — `--debug` prints the
+  score of every crop sent.
 - **Watchdog clears, does not cancel.** If a detect/identify call exceeds
   `call_timeout_seconds` (default 20), `CallGuard.watchdog` only clears the in-flight flag
   so the pipeline can resume — the hung call itself is not cancelled, and a

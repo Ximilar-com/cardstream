@@ -27,6 +27,7 @@ def make_core(
     use_tracker=False,
     forget_after=0.0,
     retry_unmatched=0.0,
+    send_blurred_after=0.0,
 ) -> DecisionCore:
     return DecisionCore(
         intervals=DetectIntervals(
@@ -40,6 +41,7 @@ def make_core(
         use_tracker=use_tracker,
         forget_after_seconds=forget_after,
         retry_unmatched_seconds=retry_unmatched,
+        send_blurred_after_seconds=send_blurred_after,
     )
 
 
@@ -518,3 +520,164 @@ def test_losing_the_card_clears_the_quad():
     core.on_detection(seg_det(), settled=True, now=1.0)
     core.on_detection(None, settled=True, now=2.0)
     assert core.snapshot() == Snapshot(CardState.EMPTY, None, None, None)
+
+
+# --- holding a call until the crop is sharp ----------------------------------
+#
+# The driver measures; the core decides what a "no" means. These pin that a
+# held call is not a spent one, and when the core stops waiting.
+
+
+def blurred():
+    return False
+
+
+def in_focus():
+    return True
+
+
+def _detect(core, crop, now, sharp, settled=True):
+    core.on_frame(settled=settled, score=0.0, now=now)
+    return core.on_detection(crop, settled=settled, now=now, sharp=sharp)
+
+
+def test_a_blurred_card_holds_the_call_and_spends_nothing():
+    """Held, not fired: no signature committed and no cooldown started, so the
+    very next detection that finds the card sharp pays for it — once."""
+    core = make_core(idle=0.0, empty=0.0, cooldown=30.0)
+    card = det(seed=1)
+    assert _detect(core, card, 100.0, blurred) is False
+    assert core.holding
+    assert not core.identify.in_flight
+    assert core.snapshot().state is CardState.SETTLED  # still a card, still there
+
+    assert _detect(core, card, 100.1, in_focus) is True  # a 30s cooldown did not apply
+    assert not core.holding
+    core.on_identify_done({"full_name": "Clefairy"})
+    assert _detect(core, card, 200.0, in_focus) is False  # and it is paid for
+
+
+def test_nobody_checking_means_nothing_is_held():
+    core = make_core(idle=0.0, empty=0.0)
+    assert _detect(core, det(seed=1), 100.0, sharp=None) is True
+
+
+def test_sharpness_is_only_asked_when_a_call_would_otherwise_fire():
+    """The answer costs a full-resolution cut, so a card that is moving,
+    cooling down or already paid for must never ask the question."""
+    asked = []
+
+    def sharp():
+        asked.append(1)
+        return True
+
+    core = make_core(idle=0.0, empty=0.0, cooldown=5.0)
+    assert _detect(core, det(seed=1), 100.0, sharp, settled=False) is False
+    assert asked == []  # still moving
+
+    assert _detect(core, det(seed=1), 100.1, sharp) is True
+    assert len(asked) == 1
+    core.on_identify_done({"full_name": "Clefairy"})
+
+    assert _detect(core, det(seed=2), 101.0, sharp) is False
+    assert len(asked) == 1  # a new card, but inside the cooldown
+    assert _detect(core, det(seed=1), 110.0, sharp) is False
+    assert len(asked) == 1  # the same card: the gate already said no
+
+
+def test_a_held_call_keeps_the_previous_cards_name():
+    """ "Changed" was decided on a blurred crop — exactly when the gate cannot
+    be trusted. Dropping the name there would lose it for good whenever the
+    card was merely refocusing: the sharp frame matches the signature and
+    never fires again."""
+    core = make_core(idle=0.0, empty=0.0)
+    assert _detect(core, det(seed=1), 100.0, in_focus) is True
+    core.on_identify_done({"full_name": "Clefairy"})
+
+    assert _detect(core, det(seed=2), 101.0, blurred) is False
+    snap = core.snapshot()
+    assert snap.state is CardState.IDENTIFIED
+    assert snap.identification == {"full_name": "Clefairy"}
+
+    # The same card after all, now back in focus: no call, and the name stayed.
+    assert _detect(core, det(seed=1), 101.2, in_focus) is False
+    assert core.snapshot().identification == {"full_name": "Clefairy"}
+    assert not core.holding
+
+
+def test_a_card_held_too_long_is_sent_as_it_is():
+    notes = []
+    core = make_core(idle=0.0, empty=0.0, log=notes.append, send_blurred_after=3.0)
+    card = det(seed=1)
+    assert _detect(core, card, 100.0, blurred) is False
+    assert _detect(core, card, 101.5, blurred) is False
+    assert _detect(core, card, 102.9, blurred) is False
+    assert notes == []
+    assert _detect(core, card, 103.0, blurred) is True  # 3s of nothing better
+    assert any("[sharp]" in n and "sending it anyway" in n for n in notes)
+    assert not core.holding
+
+
+def test_send_blurred_after_zero_waits_for_a_sharp_frame_forever():
+    core = make_core(idle=0.0, empty=0.0, send_blurred_after=0.0)
+    card = det(seed=1)
+    for now in (100.0, 110.0, 1000.0):
+        assert _detect(core, card, now, blurred) is False
+    assert _detect(core, card, 1000.1, in_focus) is True
+
+
+def test_a_hold_is_a_streak_and_anything_else_ends_it():
+    """The timeout counts CONSECUTIVE held detections. Were it a clock that
+    only some exits stopped, a card lifted for three seconds without leaving
+    the frame would leave it running — and the next blurred card would be sent
+    the instant it settled."""
+    core = make_core(idle=0.0, empty=0.0, send_blurred_after=3.0)
+    assert _detect(core, det(seed=1), 100.0, blurred) is False
+    assert core.holding
+
+    assert _detect(core, det(seed=1), 101.0, blurred, settled=False) is False
+    assert not core.holding  # moving again: the streak is over
+
+    assert _detect(core, det(seed=2), 104.0, blurred) is False  # NOT sent at once
+    assert _detect(core, det(seed=2), 106.9, blurred) is False
+    assert _detect(core, det(seed=2), 107.0, blurred) is True  # 3s of ITS OWN
+
+
+def test_losing_the_card_ends_the_hold():
+    core = make_core(idle=0.0, empty=0.0, send_blurred_after=3.0)
+    assert _detect(core, det(seed=1), 100.0, blurred) is False
+    assert _detect(core, None, 100.5, blurred) is False
+    assert not core.holding
+    assert _detect(core, det(seed=1), 103.5, blurred) is False  # a fresh 3s
+
+
+def test_a_due_retry_that_is_blurred_still_costs_nothing():
+    """--retry-unmatched resets the gate BEFORE sharpness is asked. Harmless:
+    the emptied gate keeps answering NEW, so the retry simply waits for focus."""
+    core = make_core(idle=0.0, empty=0.0, retry_unmatched=5.0)
+    card = det(seed=1)
+    assert _detect(core, card, 100.0, in_focus) is True
+    core.on_identify_done(None)  # no match
+
+    assert _detect(core, card, 105.0, blurred) is False  # retry due, crop blurred
+    assert _detect(core, card, 105.2, blurred) is False
+    assert _detect(core, card, 105.4, in_focus) is True  # the one retry
+    core.on_identify_done({"full_name": "Clefairy"})
+    assert _detect(core, card, 111.0, in_focus) is False
+
+
+def test_a_held_call_does_not_wait_out_the_tracker_resync():
+    """Only a detection can retry a held call, and with a tracker locked on
+    they come every `tracking` seconds — a long time to leave a card unnamed."""
+    core = make_core(moving=0.3, idle=1.0, tracking=30.0, use_tracker=True)
+    assert core.on_frame(settled=True, score=0.0, now=100.0) is True
+    assert core.on_detection(det(seed=1), True, 100.0, sharp=blurred) is False
+    assert core.tracking and core.holding
+    assert core.on_frame(settled=True, score=0.0, now=100.5) is False  # idle tier
+    assert core.on_frame(settled=True, score=0.0, now=101.0) is True  # not 30s
+
+    # Sent: the tracker's slow tier is back.
+    assert core.on_detection(det(seed=1), True, 101.0, sharp=in_focus) is True
+    core.on_identify_done({"full_name": "Clefairy"})
+    assert core.on_frame(settled=True, score=0.0, now=110.0) is False
+    assert core.on_frame(settled=True, score=0.0, now=131.0) is True

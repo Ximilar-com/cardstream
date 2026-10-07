@@ -165,7 +165,9 @@ class DecisionCore:
     and reads back what to do:
 
     * ``on_frame(settled, score, now)`` -> True = launch a detection now
-    * ``on_detection(det, settled, now)`` -> True = launch an identify for it
+    * ``on_detection(det, settled, now, sharp)`` -> True = launch an identify
+      for it; ``sharp`` is the driver's "is this crop in focus?" answer, asked
+      only when a call would otherwise fire, and a no HOLDS the call
     * ``on_track(ok, bbox)`` -> per-frame tracker outcome (tracker drivers)
     * ``on_identify_done(ident)`` -> records the result (None = failed)
 
@@ -183,6 +185,7 @@ class DecisionCore:
         use_tracker: bool = False,
         forget_after_seconds: float = 0.0,
         retry_unmatched_seconds: float = 0.0,
+        send_blurred_after_seconds: float = 0.0,
     ) -> None:
         self._intervals = intervals
         self._motion_threshold = motion_threshold
@@ -201,6 +204,14 @@ class DecisionCore:
         # 0 keeps the strict policy.
         self._retry_unmatched = retry_unmatched_seconds
         self._unmatched = False
+        # A call the sharpness check is holding back: when its streak of held
+        # detections began, None while nothing is held. A hold commits nothing
+        # — no signature, no cooldown — so the card is simply asked about
+        # again at the next detection. After this many seconds of that the
+        # frame goes out as it is: a camera that never reaches the threshold
+        # must still get a name, only later. 0 waits for a sharp frame forever.
+        self._send_blurred_after = send_blurred_after_seconds
+        self._blurred_since: float | None = None
         # One channel: the driver hands its ``on_log`` in and the terminal and
         # the browser's debug panel both see every line, faults and routine
         # events alike.
@@ -220,16 +231,23 @@ class DecisionCore:
         # IdentificationLike: Identification (server) or dict (client).
         self.last_ident: Any | None = None
 
+    @property
+    def holding(self) -> bool:
+        """A call is being held back until the card's crop is sharp."""
+        return self._blurred_since is not None
+
     def on_frame(self, settled: bool, score: float, now: float) -> bool:
         """Run the watchdogs and the tiered throttle; True = detect now."""
         self.settled = settled
         self.detect.watchdog(now)
         self.identify.watchdog(now)
 
-        if self.tracking:
+        if self.tracking and not self.holding:
             # The tracker follows the card (even a moving one); detection only
             # needs to re-sync it. A lost track expires the throttle, so the
             # fallback detect fires immediately, not a full interval later.
+            # Not while a call is held, though: only a detection can retry it,
+            # and a re-sync interval is a long time to leave a card unnamed.
             interval = self._intervals.tracking
         elif score >= self._motion_threshold:
             interval = self._intervals.moving
@@ -271,14 +289,31 @@ class DecisionCore:
         self.detect.end()
 
     def on_detection(
-        self, det: DetectionResult | None, settled: bool, now: float
+        self,
+        det: DetectionResult | None,
+        settled: bool,
+        now: float,
+        sharp: Callable[[], bool] | None = None,
     ) -> bool:
         """Record a detection outcome; True = launch an identify for ``det``.
 
         ``settled`` is the motion-gate verdict captured when the detection was
         *scheduled* — for an async detector the scene may have changed since.
+
+        ``sharp`` answers whether the crop that would be sent is in focus. It
+        is asked LAST, and only when everything else says fire: the answer
+        costs a full-resolution cut, so a card that is merely being held in
+        frame never pays for it. None means nobody is checking.
         """
         self.detect.end()
+        # A hold is a streak of CONSECUTIVE held detections. Taken off here and
+        # put back only by the hold itself, so every other way out of this
+        # method — card gone, still moving, cooling down, the same card, a call
+        # fired — ends it. Clearing at chosen exits instead would leave
+        # whichever one was forgotten: a card lifted for three seconds without
+        # leaving the frame, say, and the NEXT blurred one sent the moment it
+        # settled because the clock had been running all along.
+        held_since, self._blurred_since = self._blurred_since, None
         if det is None:
             # Card gone. Keep the gate signature + last_ident so the SAME card
             # returning is shown instantly without a fresh paid call — unless
@@ -338,6 +373,23 @@ class DecisionCore:
         if not changed:
             # The same card, still in frame: it is already paid for.
             return False
+
+        if sharp is not None and not sharp():
+            # A card worth a call, but not this FRAME of it. Nothing is
+            # committed, so the next detection asks again — and last_ident is
+            # left alone on purpose: "changed" was decided on a blurred crop,
+            # which is exactly when the gate cannot be trusted, and dropping
+            # the name of a card that is merely refocusing would lose it for
+            # good (the sharp frame matches the signature and never fires).
+            held_since = now if held_since is None else held_since
+            waited = now - held_since
+            if not self._send_blurred_after or waited < self._send_blurred_after:
+                self._blurred_since = held_since
+                return False
+            if self._log is not None:
+                self._log(
+                    f"[sharp] still blurred after {waited:.1f}s — sending it anyway"
+                )
 
         self.identify.begin(now)
         self._gate.commit(token)

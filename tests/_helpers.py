@@ -36,6 +36,31 @@ def textured_crop(seed: int = 0, size: int = 64) -> np.ndarray:
     return rng.randint(0, 256, size=(size, size, 3), dtype=np.uint8)
 
 
+def printed_card(w: int = 420, h: int = 590) -> np.ndarray:
+    """A card with something PRINTED on it — a frame, art, lines of text.
+
+    The one synthetic image here with real edges, so it is the one a sharpness
+    score means anything on: every other fake is a flat fill (nothing in it to
+    blur) or random noise (which is all fine detail, and nothing like a card).
+    """
+    import cv2
+
+    card = np.full((h, w, 3), 205, dtype=np.uint8)
+    cv2.rectangle(card, (10, 10), (w - 11, h - 11), (40, 70, 190), 8)
+    cv2.rectangle(card, (34, 70), (w - 35, h // 2), (90, 150, 60), -1)
+    for i in range(12):
+        centre = (60 + 27 * i, 110 + (i * 37) % 170)
+        colour = (30 + 15 * i, 200 - 12 * i, 120)
+        cv2.circle(card, centre, 14 + i % 5, colour, -1)
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    cv2.putText(card, "Clefairy", (34, 52), font, 1.0, (20, 20, 20), 2, cv2.LINE_AA)
+    for i in range(9):
+        line = f"Perfect Order 094/100 line {i}"
+        y = h // 2 + 34 + 27 * i
+        cv2.putText(card, line, (34, y), font, 0.55, (25, 25, 25), 1, cv2.LINE_AA)
+    return card
+
+
 def jpeg_bytes(frame: np.ndarray | None = None) -> bytes:
     """Encode ``frame`` (default: a plain make_frame()) as JPEG bytes."""
     import cv2
@@ -119,6 +144,10 @@ DETERMINISTIC_ANALYZER_CFG = {
     # The aspect filter is left ON — the fakes are card-shaped (~0.71), so it
     # stays an honest check that they look like cards.
     "min_card_fraction": 0.0,
+    # Same story for the sharpness hold: the fake frames are flat fills, which
+    # score 0.0 — nothing in them to blur — so every call would be held. The
+    # tests that are about sharpness paint a textured card and turn it on.
+    "min_sharpness": 0.0,
     "cooldown_seconds": 0.0,
     "still_frames_required": 2,
     "detect_interval_seconds": 0.0,

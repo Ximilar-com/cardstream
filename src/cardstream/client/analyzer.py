@@ -38,6 +38,7 @@ from cardstream.core.imaging import FramePair, thumbnail_data_url
 from cardstream.core.models import AnalysisResult, BoundingBox, DetectionResult
 from cardstream.core.motion import MotionGate
 from cardstream.core.quad import expand_quad, paid_quad
+from cardstream.core.sharpness import sharpness
 from cardstream.core.show_history import ShowHistory
 from cardstream.core.tracking import ObjectTracker, make_tracker
 from cardstream.core.ximilar_session import SessionRecorder
@@ -82,6 +83,17 @@ class AnalyzerConfig:
     # for, and the miss is usually a bad look (glare, a hand across the art)
     # that the next frame already fixes. 0 = never retry.
     retry_unmatched_seconds: float = 0.5
+    # A card whose crop scores under this (core.sharpness, 0..1) is not sent
+    # yet: the call is HELD until a sharper frame of it arrives. The motion
+    # gate settles while the camera is still focusing on a card that has just
+    # come in, and a blurred crop comes back as a confident wrong card. A card
+    # in focus scores ~0.75-0.81 whatever is printed on it, the out-of-focus
+    # ones ~0.46-0.63. 0 = send whatever is there.
+    min_sharpness: float = 0.68
+    # ...but not forever. A card held back this long is sent as it is, so a
+    # camera that never reaches the threshold still gets names, only later.
+    # Autofocus takes well under a second. 0 = wait for a sharp frame forever.
+    send_blurred_after_seconds: float = 3.0
     motion_threshold: float = 8.0
     still_frames_required: int = 2
     detect_interval_seconds: float = 0.1
@@ -99,7 +111,20 @@ class AnalyzerConfig:
 
 # AnalyzerConfig fields the settings dialog may change on a RUNNING analyzer.
 # Everything else is read once at construction, so retuning it would be a lie.
-LIVE_FIELDS = frozenset({"result_threshold"})
+LIVE_FIELDS = frozenset({"result_threshold", "min_sharpness"})
+
+
+def _cut_card(pair: FramePair, det: DetectionResult, grow: float) -> np.ndarray | None:
+    """The located card, cut from the ORIGINAL frame and grown by ``grow``.
+
+    Deskew or square cut is the only branch: a locator that found the card's
+    CORNERS (a segmentor) gets a deskewed crop, tight at the card edge; a box
+    locator gets the square cut. The growth follows ``core.quad.paid_quad``,
+    which is what the page draws. Both return an owned array or None.
+    """
+    if det.quad is not None:
+        return pair.warp(expand_quad(det.quad, grow))
+    return pair.crop(det.bbox.expanded(grow))
 
 
 class SmartAnalyzer:
@@ -169,6 +194,10 @@ class SmartAnalyzer:
         # The detection whose crop the gate is currently deciding on — lets the
         # gate debug line carry the detector's confidence too.
         self._gate_det = None
+        # The sharpness score of the card this detection found, None when it
+        # was not measured — for the debug lines, which are how anyone finds
+        # the right --min-sharpness for their camera.
+        self._sharpness: float | None = None
         on_debug = self._gate_debug if cfg.debug else None
         gate = (
             EmbeddingGate(embedder, cfg.similarity_threshold, on_debug=on_debug)
@@ -190,6 +219,7 @@ class SmartAnalyzer:
             use_tracker=self._tracker is not None,
             forget_after_seconds=cfg.forget_after_seconds,
             retry_unmatched_seconds=cfg.retry_unmatched_seconds,
+            send_blurred_after_seconds=cfg.send_blurred_after_seconds,
         )
 
     def _log(self, msg: str) -> None:
@@ -287,7 +317,19 @@ class SmartAnalyzer:
                 self._log(reason)
 
         self._gate_det = det
-        fire = self._core.on_detection(det, settled, now)
+        was_holding = self._core.holding
+        fire = self._core.on_detection(
+            det, settled, now, sharp=lambda: self._sharp_enough(pair, det)
+        )
+        if self._cfg.debug and self._core.holding and not was_holding:
+            # Once per hold, not per detection: the core knows when one starts
+            # and — unlike this driver — every way one ends. Three decimals
+            # for the score: at two, 0.676 reads "0.68 under 0.68".
+            self._log(
+                f"[sharp] {self._sharpness:.3f} under "
+                f"{self._cfg.min_sharpness:.2f} — holding the call for a "
+                "sharper frame"
+            )
         if det is not None:
             self._init_tracker(pair.analysis, det)
         if self._cfg.debug:
@@ -305,6 +347,29 @@ class SmartAnalyzer:
             if reason := rule.reject(bbox, frame_size):
                 return reason
         return None
+
+    def _sharp_enough(self, pair: FramePair, det: DetectionResult) -> bool:
+        """Whether this frame of the card is in focus enough to pay for.
+
+        Asked by the core, and only when a call would otherwise fire, so it
+        costs nothing while a card is simply being held. Measured on the card
+        as LOCATED, cut from the original frame: that is the picture the
+        endpoint judges, at the resolution it gets, and leaving
+        --detection-expansion out keeps the score from moving when the margin
+        is retuned (background is usually out of focus anyway). The threshold
+        is read here rather than baked in, which is what makes it LIVE.
+        """
+        self._sharpness = None
+        floor = self._cfg.min_sharpness
+        if not floor:
+            return True
+        crop = _cut_card(pair, det, 0.0)
+        if crop is None:
+            # Nothing to measure. Let it through: _identify_detection is the
+            # one place a degenerate crop is reported, and it costs no call.
+            return True
+        self._sharpness = sharpness(crop)
+        return self._sharpness >= floor
 
     def _identify_detection(self, pair: FramePair, det: DetectionResult) -> None:
         """Send the crop for this detection — the one step that costs money."""
@@ -341,13 +406,10 @@ class SmartAnalyzer:
         SAME-vs-NEW decision with background) and the overlay keeps drawing the
         box the model actually returned.
 
-        Deskew or square cut is the only branch — the growth itself follows
-        ``core.quad.paid_quad``, which is what _crop_outline draws.
+        The cut itself is ``_cut_card`` — shared with the sharpness check,
+        which measures the same card without the expansion.
         """
-        grow = self._cfg.detection_expansion
-        if det.quad is not None:
-            return pair.warp(expand_quad(det.quad, grow))
-        return pair.crop(det.bbox.expanded(grow))
+        return _cut_card(pair, det, self._cfg.detection_expansion)
 
     def _identify_log(self, crop_bgr: np.ndarray, deskewed: bool = False) -> str:
         """The debug line that proves which resolution and shape was actually sent."""
@@ -355,6 +417,8 @@ class SmartAnalyzer:
         how = " deskewed" if deskewed else ""
         if self._cfg.detection_expansion:
             how += f" +{self._cfg.detection_expansion:.0%}"
+        if self._sharpness is not None:
+            how += f" sharp={self._sharpness:.3f}"
         return f"[identify] new card — calling identify crop={w}x{h}{how}"
 
     def _init_tracker(self, frame_bgr: np.ndarray, det: DetectionResult) -> None:

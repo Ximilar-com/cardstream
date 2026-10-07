@@ -71,6 +71,7 @@ def create_web_app(
     analysis_width: int = DEFAULT_ANALYSIS_WIDTH,
     camera_width: int = 1920,
     send_width: int = 1920,
+    min_sharpness: float | None = None,
 ):
     """Build the FastAPI app; ``make_analyzer(on_result, on_log)`` returns a
     fresh SmartAnalyzer (per browser connection in camera mode; one shared
@@ -78,12 +79,18 @@ def create_web_app(
     lines are also pushed to the page as ``{"log": ...}`` frames.
     ``identify_client`` is the pipeline's SHARED identify target — the page's
     settings dialog reads and rebinds its options via GET/POST /settings, and
-    ``result_threshold`` (the pipeline's startup default) is retuned on every
-    live analyzer from there too."""
+    ``result_threshold`` and ``min_sharpness`` (the pipeline's startup values)
+    are retuned on every live analyzer from there too."""
     # The whole webui/ tree, not just smart/ — the page imports ../shared/*.
     webui_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "webui"))
 
-    live = AnalyzerRegistry(make_analyzer, result_threshold, camera_width, send_width)
+    live = AnalyzerRegistry(
+        make_analyzer,
+        result_threshold,
+        camera_width,
+        send_width,
+        min_sharpness=min_sharpness,
+    )
     pump = (
         StreamPump(live.make, debug, source, analysis_width)
         if source is not None
@@ -281,6 +288,7 @@ def main() -> None:
                 identify_client=pipeline.identify_client,
                 show_detection=args.show_detection,
                 result_threshold=pipeline.config.result_threshold,
+                min_sharpness=pipeline.config.min_sharpness,
                 split_results=args.split_results,
                 min_card_time=args.min_card_time,
                 analysis_width=pipeline.config.analysis_width,
