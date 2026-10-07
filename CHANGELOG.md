@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
 ### Added
 - `--min-sharpness SCORE` (default 0.68, `0` = off): the identify call is
   **held** while the card's crop is out of focus instead of being paid for.
