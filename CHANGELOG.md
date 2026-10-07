@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-07
+
+### Added
+- Every match carries `object_confidence`: the locator's confidence in the
+  card the paid crop was cut from — the number `--detector-conf` thresholds.
+  The page shows it as `oconf` beside `dist`, on the card panel and on each
+  history row.
+
+### Changed
+- `--detector-conf` defaults to 0.6 (was 0.35). Pass `--detector-conf 0.35`
+  for the previous behaviour.
+- The confidence tiers moved: **high** is a distance up to 0.30 (was 0.18),
+  **medium** up to 0.40 (was 0.30), **low** above that.
+- The page's right panel is wider (500px, was 420px).
+
 ## [0.5.0] - 2026-10-07
 
 ### Added
