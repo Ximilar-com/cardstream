@@ -36,6 +36,17 @@ function formatElapsed(ms) {
   return ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(2) + " s";
 }
 
+// "dist 0.254 · oconf 0.93": the endpoint's match distance and, when the
+// process sent it, the LOCATOR's confidence in the card it cut — the number
+// --detector-conf thresholds.
+export function formatScores(id) {
+  let text = "dist " + Number(id.distance).toFixed(3);
+  if (id.object_confidence != null) {
+    text += " · oconf " + Number(id.object_confidence).toFixed(2);
+  }
+  return text;
+}
+
 // How long a card stayed in frame: "12.3 s" under a minute, "2m 05s" above.
 function formatDuration(ms) {
   if (ms < 60000) return (ms / 1000).toFixed(1) + " s";
@@ -221,7 +232,7 @@ export class Overlay {
     els.cardInfo.hidden = false;
     els.tier.textContent = id.confidence_tier;
     els.tier.className = "tier " + id.confidence_tier;
-    let distText = "dist " + Number(id.distance).toFixed(3);
+    let distText = formatScores(id);
     if (id.elapsed_ms != null) distText += " · " + formatElapsed(id.elapsed_ms);
     els.distance.textContent = distText;
     els.name.textContent = id.full_name || id.name || "Unknown";
@@ -297,7 +308,7 @@ export class Overlay {
     const meta = document.createElement("span");
     meta.className = "h-meta";
     meta.textContent =
-      `${id.set || "—"} #${id.card_number || "—"} · dist ${Number(id.distance).toFixed(3)}`;
+      `${id.set || "—"} #${id.card_number || "—"} · ${formatScores(id)}`;
     const dur = document.createElement("span");
     dur.className = "h-dur live";
     dur.title = "time the card stayed in frame";

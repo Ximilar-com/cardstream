@@ -116,7 +116,7 @@ main {
   flex: 1;
   min-height: 0;  /* let the grid row shrink below its content's natural size */
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-columns: 1fr 500px;
   gap: 1rem;
   padding: 1rem 1.25rem;
 }

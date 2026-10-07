@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -1221,6 +1223,25 @@ def test_the_match_is_complete_when_the_core_publishes_it(
     (ident,) = published
     assert ident["thumbnail"].startswith("data:image/jpeg;base64,")
     assert isinstance(ident["elapsed_ms"], int)
+
+
+def test_a_kept_match_carries_the_locators_confidence(
+    fake_detector, fake_embedder, fake_identify
+):
+    """What the page prints as "oconf": the confidence of the detection the
+    paid crop was cut from, on the match before the core publishes it."""
+    fake_detector.detection = replace(fake_detector.detection, prob=0.87654)
+    analyzer = make_analyzer(fake_detector, fake_embedder, fake_identify)
+    snap = settle(analyzer, frames=10)
+    assert snap.identification["object_confidence"] == 0.877
+
+
+def test_a_locator_without_a_confidence_adds_none(
+    fake_detector, fake_embedder, fake_identify
+):
+    analyzer = make_analyzer(fake_detector, fake_embedder, fake_identify)
+    snap = settle(analyzer, frames=10)
+    assert "object_confidence" not in snap.identification
 
 
 # --- the sharpness hold --------------------------------------------------------

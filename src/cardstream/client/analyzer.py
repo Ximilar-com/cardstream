@@ -391,9 +391,11 @@ class SmartAnalyzer:
         if self._cfg.debug:
             self._log(self._identify_log(crop, deskewed=det.quad is not None))
         if self._run_async:
-            threading.Thread(target=self._identify, args=(crop,), daemon=True).start()
+            threading.Thread(
+                target=self._identify, args=(crop, det.prob), daemon=True
+            ).start()
         else:
-            self._identify(crop)
+            self._identify(crop, det.prob)
 
     def _identify_crop(
         self, pair: FramePair, det: DetectionResult
@@ -435,7 +437,9 @@ class SmartAnalyzer:
             self._core.on_tracker_failed()
             self._log(f"[track] init failed ({type(exc).__name__}: {exc})")
 
-    def _identify(self, crop_bgr: np.ndarray) -> None:
+    def _identify(
+        self, crop_bgr: np.ndarray, object_confidence: float | None = None
+    ) -> None:
         ident = None
         self.identify_calls += 1
         started = time.monotonic()
@@ -453,7 +457,7 @@ class SmartAnalyzer:
                     )
                     ident = None
             if ident is not None:
-                self._complete(ident, crop_bgr, started)
+                self._complete(ident, crop_bgr, started, object_confidence)
         except Exception as exc:
             # Surface client failures — a raising client must not kill the
             # daemon thread silently and leave the state reverting unexplained.
@@ -468,13 +472,24 @@ class SmartAnalyzer:
         if self._on_result is not None:
             self._on_result(ident)
 
-    def _complete(self, ident: dict, crop_bgr: np.ndarray, started: float) -> None:
+    def _complete(
+        self,
+        ident: dict,
+        crop_bgr: np.ndarray,
+        started: float,
+        object_confidence: float | None = None,
+    ) -> None:
         """Everything a kept match carries, added BEFORE the core publishes it:
         a snapshot taken in between would reach the page without it, and the
         page builds a history row only once."""
         # Wall time of the whole identify call (network included) — the UI
         # shows it next to the distance.
         ident["elapsed_ms"] = int((time.monotonic() - started) * 1000)
+        # The LOCATOR's confidence in the card this crop was cut from — the
+        # number --detector-conf thresholds, shown beside the distance so the
+        # two can be told apart when a match looks wrong.
+        if object_confidence is not None:
+            ident["object_confidence"] = round(float(object_confidence), 3)
         # What was actually identified, small, for the page's history row.
         thumbnail = thumbnail_data_url(crop_bgr)
         if thumbnail is not None:

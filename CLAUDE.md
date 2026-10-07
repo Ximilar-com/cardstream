@@ -292,7 +292,8 @@ src/cardstream/
                      is what makes --segmentor pay off, and the ONE place
                      --detection-expansion is applied (so it changes what is
                      IDENTIFIED without touching what was LOCATED);
-                     stamps elapsed_ms and a thumbnail of the identified crop
+                     stamps elapsed_ms, object_confidence (the locator's
+                     det.prob, the page's "oconf") and a thumbnail of the identified crop
                      (thumbnail_data_url) on each kept identification for the
                      UI and hands the crop to the recorder (keep_cutout) —
                      all in _complete, BEFORE the core publishes it — feeds its ShowHistory every snapshot and the recorder
