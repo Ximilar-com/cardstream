@@ -27,7 +27,7 @@ dev:  ## run the browser UI with the full development config
 	XIMILAR_API_KEY=$${XIMILAR_API_KEY:?set XIMILAR_API_KEY first} $(WEB) \
 	    --gate embedding --embed-model model/similarity/onnx/model.onnx \
 	    --segmentor rfdetr --segmentor-model model/segmentation/onnx/model.onnx \
-	    --detector-conf 0.35 \
+	    --detector-conf 0.6 \
 	    --similarity-threshold 0.85 \
 	    --result-threshold 0.9 \
 	    --motion-threshold 8 --still-frames 2 \

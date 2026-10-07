@@ -502,7 +502,7 @@ single source for the tuning ones; argparse reads every default from it.
 | --- | --- | --- |
 | `--segmentor-model` | `model/segmentation/onnx/model.onnx` | the default locator |
 | `--embed-model` | `model/similarity/onnx/model.onnx` | `--gate embedding` is also default |
-| `--detector-conf` | 0.35 | |
+| `--detector-conf` | 0.6 | |
 | `--similarity-threshold` | 0.85 | |
 | `--result-threshold` | 0.9 | |
 | `--min-card-size` | 0.1 | of the analysed frame, BOTH dimensions |

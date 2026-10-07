@@ -112,7 +112,7 @@ def test_documented_defaults_match_the_parser(doc):
     assert not wrong, "stale documented defaults:\n  " + "\n  ".join(wrong)
 
 
-# | `--detector-conf` | 0.35 | |
+# | `--detector-conf` | 0.6 | |
 _TABLE_ROW = re.compile(
     r"^\|\s*`(--[a-z][a-z0-9-]*)`\s*\|\s*`?([^|`]+?)`?\s*\|", re.MULTILINE
 )

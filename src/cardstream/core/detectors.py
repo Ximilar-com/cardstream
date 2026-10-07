@@ -442,7 +442,7 @@ def _int_ids(classes: tuple[str, ...]) -> tuple[int, ...]:
 # family/path mismatch stays the caller's to prevent.
 DEFAULT_DETECTOR = "rfdetr"
 DEFAULT_SEGMENTOR = "rfdetr"
-DEFAULT_DETECTOR_CONF = 0.35
+DEFAULT_DETECTOR_CONF = 0.6
 # The shipped segmentor is what a bare `cardstream-web` runs. There is still no
 # default DETECTOR model — pointing --detector-model at a box model is the whole
 # opt-in, and an explicit one beats this default rather than colliding with it
