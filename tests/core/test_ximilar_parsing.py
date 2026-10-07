@@ -25,10 +25,10 @@ from cardstream.core.ximilar import (
     "distance,tier",
     [
         (0.10, ConfidenceTier.HIGH),
-        (0.18, ConfidenceTier.HIGH),  # inclusive upper bound
-        (0.25, ConfidenceTier.MEDIUM),
-        (0.30, ConfidenceTier.MEDIUM),  # inclusive upper bound
-        (0.40, ConfidenceTier.LOW),
+        (0.30, ConfidenceTier.HIGH),  # inclusive upper bound
+        (0.35, ConfidenceTier.MEDIUM),
+        (0.40, ConfidenceTier.MEDIUM),  # inclusive upper bound
+        (0.45, ConfidenceTier.LOW),
     ],
 )
 def test_distance_to_tier_boundaries(distance, tier):

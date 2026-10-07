@@ -96,9 +96,9 @@ def test_parse_returns_none_without_identification():
 
 def test_distance_to_tier_cutoffs():
     assert distance_to_tier(0.10) == "high"
-    assert distance_to_tier(0.18) == "high"
-    assert distance_to_tier(0.25) == "medium"
-    assert distance_to_tier(0.30) == "medium"
+    assert distance_to_tier(0.30) == "high"
+    assert distance_to_tier(0.35) == "medium"
+    assert distance_to_tier(0.40) == "medium"
     assert distance_to_tier(0.45) == "low"
 
 

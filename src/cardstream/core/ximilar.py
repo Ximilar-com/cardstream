@@ -25,8 +25,8 @@ logger = logging.getLogger("cardstream.ximilar")
 class TierThresholds:
     """Confidence tier cutoffs on best-match distance (lower = better)."""
 
-    high_max_distance: float = 0.18
-    medium_max_distance: float = 0.30
+    high_max_distance: float = 0.30
+    medium_max_distance: float = 0.40
 
 
 DEFAULT_TIERS = TierThresholds()
