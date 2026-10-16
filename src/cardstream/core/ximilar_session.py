@@ -5,9 +5,10 @@ still the only thing that leaves this machine. With it, the rows of the show's
 history (one per card shown, exactly as the page lists them, see
 :mod:`cardstream.core.show_history`), the crop each row was identified from
 (unless ``--no-ximilar-stream-images``) and the number of paid identify calls
-are ALSO saved to a session through the session API (``/cardstream/v2/`` on
-api.ximilar.com, same API key), so the show can be reviewed afterwards — what
-was shown, when, for how long, how sure the match was and what it was worth.
+are ALSO saved to a session through the Cards Cloud API
+(``/cards-cloud/v2/`` on api.ximilar.com, same API key), so the show can be
+reviewed afterwards — what was shown, when, for how long, how sure the match
+was and what it was worth.
 The session lives in the API key's default workspace, or in the one
 ``--ximilar-workspace`` names (sent as ``?workspace=`` on every call).
 
@@ -53,7 +54,7 @@ from cardstream.core.identify_client import DEFAULT_HTTP_TIMEOUT, auth_headers
 from cardstream.core.imaging import encode_jpeg_b64, fit_long_edge
 from cardstream.core.show_history import DEFAULT_MIN_CARD_TIME, HistoryRow, ShowHistory
 
-DEFAULT_SESSION_URL = "https://api.ximilar.com/cardstream/v2"
+DEFAULT_SESSION_URL = "https://api.ximilar.com/cards-cloud/v2"
 # The --ximilar-stream value that starts a session instead of resuming one.
 NEW_SESSION = "NEW"
 # The API's platform choices; "other" is its default too.

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `--ximilar-stream` saves sessions through `/cards-cloud/v2/` (was
+  `/cardstream/v2/`): the Ximilar service that stores them is now called
+  **Cards Cloud**, as it is shared with other Ximilar apps. Same routes,
+  same API key; the account needs the Cards Cloud service. The old path is
+  still served as a deprecated alias, so a `--ximilar-stream-url` that names
+  it keeps working.
+
 ## [0.5.1] - 2026-10-07
 
 ### Added

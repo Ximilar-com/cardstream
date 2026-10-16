@@ -506,7 +506,7 @@ def test_new_starts_a_session_described_by_the_run(session_api, capsys):
         assert payload["client"]["set_code"] == "cri"
         assert session_api.built == {
             "api_key": "k",
-            "base_url": "https://api.ximilar.com/cardstream/v2",
+            "base_url": "https://api.ximilar.com/cards-cloud/v2",
             "workspace": None,
         }
         assert f"[session {SESSION_ID}]" in pipeline.description
@@ -553,7 +553,7 @@ def test_the_session_uploads_row_images_unless_told_not_to(session_api):
 
 
 def test_the_session_url_is_configurable_for_a_dev_backend(session_api):
-    url = "http://localhost:8000/api/cardstream/v2"
+    url = "http://localhost:8000/api/cards-cloud/v2"
     args = _parse([*_BASE, "--ximilar-stream", "NEW", "--ximilar-stream-url", url])
     build_pipeline(args).close()
     assert session_api.built["base_url"] == url

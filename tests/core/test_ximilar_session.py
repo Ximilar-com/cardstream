@@ -244,11 +244,11 @@ def test_the_api_needs_a_key():
 def test_create_posts_to_the_session_endpoint_with_the_identify_headers(http):
     calls, replies = http
     replies.append(_Response(201, {"id": SESSION_ID, "status": "live"}))
-    api = SessionApi("key", "http://localhost:8000/api/cardstream/v2/")
+    api = SessionApi("key", "http://localhost:8000/api/cards-cloud/v2/")
     assert api.create({"name": "Show"})["id"] == SESSION_ID
     call = calls[0]
     assert call["method"] == "POST"
-    assert call["url"] == "http://localhost:8000/api/cardstream/v2/session/"
+    assert call["url"] == "http://localhost:8000/api/cards-cloud/v2/session/"
     assert call["headers"]["Authorization"] == "Token key"
     assert call["headers"]["User-Agent"] == "CardStream"
 
@@ -256,11 +256,11 @@ def test_create_posts_to_the_session_endpoint_with_the_identify_headers(http):
 def test_reopen_posts_to_the_reopen_endpoint(http):
     calls, replies = http
     replies.append(_Response(200, {"id": SESSION_ID, "status": "live"}))
-    api = SessionApi("key", "http://localhost:8000/api/cardstream/v2/")
+    api = SessionApi("key", "http://localhost:8000/api/cards-cloud/v2/")
     assert api.reopen(SESSION_ID)["status"] == "live"
     assert (calls[0]["method"], calls[0]["url"]) == (
         "POST",
-        f"http://localhost:8000/api/cardstream/v2/session/{SESSION_ID}/reopen/",
+        f"http://localhost:8000/api/cards-cloud/v2/session/{SESSION_ID}/reopen/",
     )
 
 
@@ -300,7 +300,7 @@ def test_without_a_workspace_the_api_keys_default_is_used(http):
 def test_a_refused_start_says_why(http):
     _, replies = http
     replies.append(
-        _Response(403, {"detail": "not allowed to access service Cardstream"})
+        _Response(403, {"detail": "not allowed to access service Cards Cloud"})
     )
     with pytest.raises(SessionError, match="HTTP 403: not allowed to access service"):
         SessionApi("key").get(SESSION_ID)

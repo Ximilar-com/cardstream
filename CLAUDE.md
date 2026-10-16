@@ -222,7 +222,7 @@ src/cardstream/
                      along — ONE malformed field would 400 the whole batch,
                      so it is made safe here, once), SessionApi (create / get
                      / upload / upload_image / report_calls / close against
-                     /cardstream/v2/, every call with ?workspace= when
+                     /cards-cloud/v2/, every call with ?workspace= when
                      --ximilar-workspace is given, auth_headers shared with the identify
                      call; every reply sorted into an Outcome: STORED, RETRY
                      for network/429/5xx, REJECTED for a bad batch, STOPPED

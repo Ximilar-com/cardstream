@@ -347,7 +347,7 @@ class FakeSessionApi:
     ``image_replies`` do the same for call reports and image uploads.
     """
 
-    base_url = "https://api.test/cardstream/v2"
+    base_url = "https://api.test/cards-cloud/v2"
     workspace: str | None = None
 
     def __init__(

@@ -15,7 +15,7 @@ cardstream-web --game Pokemon --alphabet latin --price-stats --ximilar-stream NE
 At startup the client prints the session it started, and where to review it:
 
 ```
-[session] started Pokémon show 2026-09-29 20:15 (0b7c9a52-…) — review at https://api.ximilar.com/cardstream/v2/session/0b7c9a52-…/summary/
+[session] started Pokémon show 2026-09-29 20:15 (0b7c9a52-…) — review at https://api.ximilar.com/cards-cloud/v2/session/0b7c9a52-…/summary/
 ```
 
 On a clean exit (Ctrl-C) it uploads whatever is still queued and closes the
@@ -30,7 +30,7 @@ session:
 - The same `XIMILAR_API_KEY` the identify call uses. The session belongs to
   that key's account: its default workspace, or the workspace
   `--ximilar-workspace` names.
-- That account needs the **cardstream** service. Without it, the start fails
+- That account needs the **Cards Cloud** service. Without it, the start fails
   with the API's own explanation, before the show begins.
 
 ## The flags
@@ -132,11 +132,11 @@ For now the review is the session API itself (the platform UI is to come):
 
 ```bash
 curl -H "Authorization: Token $XIMILAR_API_KEY" \
-  https://api.ximilar.com/cardstream/v2/session/SESSION_ID/summary/
+  https://api.ximilar.com/cards-cloud/v2/session/SESSION_ID/summary/
 curl -H "Authorization: Token $XIMILAR_API_KEY" \
-  "https://api.ximilar.com/cardstream/v2/identification/?session=SESSION_ID"
+  "https://api.ximilar.com/cards-cloud/v2/identification/?session=SESSION_ID"
 curl -H "Authorization: Token $XIMILAR_API_KEY" \
-  https://api.ximilar.com/cardstream/v2/session/
+  https://api.ximilar.com/cards-cloud/v2/session/
 ```
 
 - **The summary** has the number of cards shown and of distinct cards, the

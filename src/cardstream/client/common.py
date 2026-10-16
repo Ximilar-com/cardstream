@@ -547,7 +547,7 @@ def add_pipeline_args(ap: argparse.ArgumentParser) -> None:
         f"platform, to review the show afterwards: {NEW_SESSION} starts one "
         "(its id is printed), a session id resumes one (a closed one is "
         "reopened). Uses the same "
-        "API key; the account needs the cardstream service. Off by default — "
+        "API key; the account needs the Cards Cloud service. Off by default — "
         "then the identify call is the only thing that leaves this machine",
     )
     session.add_argument(
